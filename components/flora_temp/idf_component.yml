@@ -1,0 +1,5 @@
+dependencies:
+  # Sterownik DS18B20 z rejestru Espressif. Pociaga za soba onewire_bus,
+  # ktory realizuje 1-Wire na peryferiale RMT - bez bit-bangu i bez
+  # blokowania przerwan na czas transmisji.
+  ds18b20: "^0.2.0"

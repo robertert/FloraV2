@@ -81,6 +81,14 @@ esp_err_t flora_ina226_read_current(flora_ina226_handle_t h, float *amps);
 /** Rozdzielczosc pomiaru pradu wyliczona przy inicjalizacji, w amperach na bit. */
 float flora_ina226_current_lsb(flora_ina226_handle_t h);
 
+/**
+ * @brief Wypisuje surowa zawartosc rejestrow do logu.
+ *
+ * Do diagnozy: pokazuje czy kalibracja faktycznie sie zapisala i jakie
+ * napiecie uklad widzi na boczniku w mikrowoltach.
+ */
+esp_err_t flora_ina226_dump(flora_ina226_handle_t h);
+
 #ifdef __cplusplus
 }
 #endif

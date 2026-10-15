@@ -1,59 +1,49 @@
 /**
  * Doniczka-robot, jednostka dolna (bryla).
  *
- * Test rozruchowy peryferiow napedu: silniki MDD10A, enkodery na PCNT,
- * pomiar pradu INA226. Zadaniem tego kodu jest powiedziec, czy wszystko jest
- * podlaczone poprawnie, ZANIM zacznie sie pisac PID i odometrie.
+ * Test rozruchowy hydrauliki i pomiaru temperatury.
  *
- * UWAGA: robot musi stac na podstawkach, kola w powietrzu.
+ * Test napedu (silniki, enkodery, diagnostyka zbocz) zostal przeniesiony do
+ * bringup_drive.c po zakonczeniu jego rozruchu - wywolaj bringup_drive_run(),
+ * jesli bedziesz go potrzebowal ponownie.
+ *
+ * UWAGA: czujnik poziomu wody NIE jest jeszcze podlaczony, wiec ochrona
+ * przed praca na sucho jest WYLACZONA. Przed uruchomieniem upewnij sie,
+ * ze w zbiorniku jest woda albo odlacz pompke.
  */
 #include <inttypes.h>
-#include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "esp_log.h"
 #include "esp_err.h"
+#include "esp_timer.h"
 #include "driver/i2c_master.h"
 
 #include "flora_board.h"
-#include "flora_motors.h"
-#include "flora_encoders.h"
 #include "flora_ina226.h"
+#include "flora_pump.h"
+#include "flora_temp.h"
 
 static const char *TAG = "dol";
 
-/* Moc uzywana w testach. 30% wystarczy, zeby kolo ruszylo bez obciazenia,
- * a jest na tyle malo, ze pomylka w okablowaniu nic nie urwie. */
-#define TEST_POWER        30.0f
-#define TEST_DURATION_MS  1500
-#define SETTLE_MS         600
+/* --- Limity pompki na czas testu ---
+ * Znacznie ciasniejsze niz docelowe (30 s / 60 s / 10 min), zeby przy braku
+ * czujnika poziomu zadna pomylka nie zdazyla narobic szkody, a sam test nie
+ * trwal minutami przez dluga przerwe miedzy dawkami. */
+#define TEST_PUMP_MAX_RUN_MS   2000
+#define TEST_PUMP_INTERVAL_MS  3000
+#define TEST_PUMP_DAILY_MS    30000
+#define TEST_PUMP_DOSE_MS      1000
 
-/* Ponizej tylu zliczen uznajemy, ze kolo w ogole nie drgnelo. */
-#define MIN_COUNTS_MOVED  50
-
-static flora_ina226_handle_t s_ina;
+static flora_ina226_handle_t   s_ina;
 static i2c_master_bus_handle_t s_i2c_bus;
+static bool s_temp_ready;
+static bool s_pump_ready;
 
-static int s_checks_passed;
-static int s_checks_failed;
-
-static void check(bool ok, const char *what, const char *hint)
-{
-    if (ok) {
-        s_checks_passed++;
-        ESP_LOGI(TAG, "  [ OK ] %s", what);
-    } else {
-        s_checks_failed++;
-        ESP_LOGE(TAG, "  [BLAD] %s", what);
-        if (hint) {
-            ESP_LOGE(TAG, "         podpowiedz: %s", hint);
-        }
-    }
-}
+/* ================= I2C / INA226 ================= */
 
 static esp_err_t i2c_bus_setup(void)
 {
@@ -68,268 +58,233 @@ static esp_err_t i2c_bus_setup(void)
     return i2c_new_master_bus(&bus_cfg, &s_i2c_bus);
 }
 
-/**
- * Wypisuje, co odpowiada na magistrali, i zbiera adresy do tablicy.
- * @return liczba znalezionych urzadzen
- */
-static int i2c_scan(uint8_t *found, int cap)
-{
-    ESP_LOGI(TAG, "skanowanie I2C (SDA=%d, SCL=%d):", FLORA_PIN_I2C_SDA, FLORA_PIN_I2C_SCL);
-    int n = 0;
-    for (uint8_t addr = 0x08; addr < 0x78; addr++) {
-        if (i2c_master_probe(s_i2c_bus, addr, 50) == ESP_OK) {
-            ESP_LOGI(TAG, "  znaleziono 0x%02X", addr);
-            if (n < cap) {
-                found[n] = addr;
-            }
-            n++;
-        }
-    }
-    if (n == 0) {
-        ESP_LOGW(TAG, "  cisza na magistrali - sprawdz zasilanie ukladu, podciagniecia i kable");
-    }
-    return n;
-}
-
-/**
- * Szuka INA226 wsrod znalezionych adresow.
- *
- * Adres ukladu zalezy od zworek A0/A1 i waha sie w zakresie 0x40-0x4F,
- * wiec zamiast zakladac domyslne 0x40 sprawdzamy identyfikator producenta
- * pod kazdym adresem, ktory w ogole odpowiada.
- */
-static esp_err_t ina226_autodetect(const uint8_t *addrs, int n)
+/** Adres INA226 zalezy od zworek A0/A1, wiec szukamy go zamiast zakladac. */
+static void ina226_autodetect(void)
 {
     flora_ina226_cfg_t cfg = FLORA_INA226_DEFAULT_CFG();
     cfg.shunt_milliohm = FLORA_SHUNT_MILLIOHM;
 
-    for (int i = 0; i < n; i++) {
-        if (addrs[i] < 0x40 || addrs[i] > 0x4F) {
-            continue;  /* poza zakresem adresow INA226 */
+    for (uint8_t addr = 0x40; addr <= 0x4F; addr++) {
+        if (i2c_master_probe(s_i2c_bus, addr, 50) != ESP_OK) {
+            continue;
         }
-        cfg.i2c_address = addrs[i];
+        cfg.i2c_address = addr;
         if (flora_ina226_init(s_i2c_bus, &cfg, &s_ina) == ESP_OK) {
-            return ESP_OK;
+            return;
         }
     }
     s_ina = NULL;
-    return ESP_ERR_NOT_FOUND;
+    ESP_LOGW(TAG, "nie znalazlem INA226 - test pojdzie bez pomiaru zasilania");
 }
 
-/** Loguje stan zasilania i zwraca zmierzony prad (NAN gdy brak ukladu). */
-static float log_power(const char *moment)
+/** Napiecie szyny. Prad pomijamy: tor pomiarowy bocznika jest uszkodzony. */
+static float bus_voltage(void)
 {
-    if (!s_ina) {
-        return NAN;   /* brak ukladu: milczymy, zamiast powtarzac to samo ostrzezenie */
+    float v = 0.0f;
+    if (s_ina) {
+        flora_ina226_read_bus_voltage(s_ina, &v);
     }
-    flora_ina226_reading_t r;
-    if (flora_ina226_read(s_ina, &r) != ESP_OK) {
-        ESP_LOGW(TAG, "  %s: odczyt INA226 nie powiodl sie", moment);
-        return NAN;
-    }
-    ESP_LOGI(TAG, "  %s: %.2f V, %.3f A, %.2f W (bocznik %.3f mV)",
-             moment, r.bus_voltage_v, r.current_a, r.power_w, r.shunt_voltage_mv);
-    return r.current_a;
+    return v;
 }
 
-/**
- * Prog, powyzej ktorego uznajemy ze sterownik faktycznie ciagnie prad.
- * Sam MDD10A na logike bierze wiecej niz 20 mA, wiec ponizej tej wartosci
- * mozna powiedziec z cala pewnoscia, ze przez bocznik nic nie plynie.
- */
-#define CURRENT_ALIVE_A  0.020f
+/* ================= TEMPERATURA ================= */
 
-/**
- * Jeden przebieg: zadaje moc, mierzy przyrost zliczen i prad.
- *
- * @param expect_left   spodziewany kierunek lewego kola: +1, -1 albo 0 (ma stac)
- */
-static void run_leg(const char *name, float left_power, float right_power,
-                    int expect_left, int expect_right)
+static void test_temperature(void)
 {
-    ESP_LOGI(TAG, "--- %s (L=%.0f%%, P=%.0f%%) ---", name, left_power, right_power);
+    ESP_LOGI(TAG, "=== CZUJNIKI TEMPERATURY ===");
 
-    flora_encoders_sample_t before, after;
-    ESP_ERROR_CHECK(flora_encoders_read(&before));
+    flora_temp_cfg_t cfg = FLORA_TEMP_DEFAULT_CFG();
+    cfg.gpio = FLORA_PIN_DS18B20;
 
-    float idle_a = log_power("przed ruchem");
+    esp_err_t err = flora_temp_init(&cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "  brak czujnikow na GPIO%d (%s)", FLORA_PIN_DS18B20, esp_err_to_name(err));
+        ESP_LOGE(TAG, "  sprawdz rezystor 4,7k miedzy linia danych a 3,3V, "
+                      "zasilanie czujnika i wspolna mase");
+        return;
+    }
+    s_temp_ready = true;
 
-    ESP_ERROR_CHECK(flora_motors_set(left_power, right_power));
-    vTaskDelay(pdMS_TO_TICKS(TEST_DURATION_MS / 2));
-    float load_a = log_power("pod obciazeniem");
-    vTaskDelay(pdMS_TO_TICKS(TEST_DURATION_MS / 2));
+    int n = flora_temp_count();
+    ESP_LOGI(TAG, "  znaleziono %d czujnik(ow), konwersja %" PRIu32 " ms",
+             n, flora_temp_conversion_ms());
+    for (int i = 0; i < n; i++) {
+        ESP_LOGI(TAG, "    [%d] adres %016llX", i,
+                 (unsigned long long)flora_temp_address(i));
+    }
 
-    /* Czy przez bocznik w ogole cokolwiek poplynelo. */
-    bool current_flowed = !isnan(idle_a) && !isnan(load_a)
-                          && fabsf(load_a - idle_a) > CURRENT_ALIVE_A;
-    bool current_known = !isnan(idle_a) && !isnan(load_a);
+    /* Tryb prosty: jedno wywolanie, blokuje na czas konwersji. */
+    int64_t t0 = esp_timer_get_time();
+    float celsius = 0.0f;
+    if (flora_temp_read(0, &celsius) == ESP_OK) {
+        ESP_LOGI(TAG, "  odczyt blokujacy: %.3f C (zajal %" PRId64 " ms)",
+                 celsius, (esp_timer_get_time() - t0) / 1000);
+        /* 85,0 C to wartosc, ktora uklad trzyma w rejestrze po resecie. */
+        if (celsius > 84.9f && celsius < 85.1f) {
+            ESP_LOGW(TAG, "  dokladnie 85 C - to moze byc wartosc poresetowa, "
+                          "a nie prawdziwy pomiar");
+        }
+    } else {
+        ESP_LOGE(TAG, "  odczyt blokujacy nie powiodl sie");
+    }
 
-    ESP_ERROR_CHECK(flora_encoders_read(&after));
-    ESP_ERROR_CHECK(flora_motors_stop());
+    /* Tryb dwuetapowy: tak wyglada uzycie w petli sterowania. */
+    t0 = esp_timer_get_time();
+    if (flora_temp_start_conversion() == ESP_OK) {
+        int64_t trigger_us = esp_timer_get_time() - t0;
+        vTaskDelay(pdMS_TO_TICKS(flora_temp_conversion_ms()));
+        if (flora_temp_fetch(0, &celsius) == ESP_OK) {
+            ESP_LOGI(TAG, "  odczyt dwuetapowy: %.3f C "
+                          "(zlecenie zajelo %" PRId64 " us, reszte mozna robic cos innego)",
+                     celsius, trigger_us);
+        }
+    }
 
-    int64_t dl = after.left_counts  - before.left_counts;
-    int64_t dr = after.right_counts - before.right_counts;
-    float speed_l = 0.0f, speed_r = 0.0f;
-    flora_encoders_speed_mm_s(&before, &after, &speed_l, &speed_r);
+    if (n > 1) {
+        float all[FLORA_TEMP_MAX_SENSORS];
+        int got = 0;
+        if (flora_temp_read_all(all, FLORA_TEMP_MAX_SENSORS, &got) == ESP_OK) {
+            for (int i = 0; i < got; i++) {
+                ESP_LOGI(TAG, "  [%d] %.3f C", i, all[i]);
+            }
+        }
+    }
+}
 
-    ESP_LOGI(TAG, "  lewe:  %+8" PRId64 " zliczen (%+7.1f mm, %+6.1f mm/s)",
-             dl, after.left_mm - before.left_mm, speed_l);
-    ESP_LOGI(TAG, "  prawe: %+8" PRId64 " zliczen (%+7.1f mm, %+6.1f mm/s)",
-             dr, after.right_mm - before.right_mm, speed_r);
+/* ================= POMPKA ================= */
 
-    struct { int64_t delta; int expect; const char *wheel; } wheels[] = {
-        { dl, expect_left,  "lewe"  },
-        { dr, expect_right, "prawe" },
+static void pump_done_cb(flora_pump_done_reason_t reason, uint32_t ran_ms, void *ctx)
+{
+    static const char *names[] = {
+        [FLORA_PUMP_DONE_COMPLETED] = "zakonczone normalnie",
+        [FLORA_PUMP_DONE_STOPPED]   = "zatrzymane recznie",
+        [FLORA_PUMP_DONE_DRY]       = "przerwane: brak wody",
+        [FLORA_PUMP_DONE_CLAMPED]   = "uciete limitem max_run_ms",
     };
+    ESP_LOGI(TAG, "  -> callback: %s, pracowala %" PRIu32 " ms", names[reason], ran_ms);
+}
 
-    for (int i = 0; i < 2; i++) {
-        char what[96];
-        if (wheels[i].expect == 0) {
-            snprintf(what, sizeof(what), "%s kolo stoi", wheels[i].wheel);
-            check(llabs(wheels[i].delta) < MIN_COUNTS_MOVED, what,
-                  "kolo kreci sie mimo zerowej mocy - zamienione kanaly PWM albo DIR");
-            continue;
-        }
+/** Czeka na koniec dozowania, pokazujac po drodze pozostaly czas. */
+static void wait_for_pump(void)
+{
+    while (flora_pump_is_running()) {
+        ESP_LOGI(TAG, "     pracuje, zostalo %" PRIu32 " ms, szyna %.2f V",
+                 flora_pump_remaining_ms(), bus_voltage());
+        vTaskDelay(pdMS_TO_TICKS(400));
+    }
+}
 
-        snprintf(what, sizeof(what), "%s kolo sie krecilo", wheels[i].wheel);
-        bool moved = llabs(wheels[i].delta) >= MIN_COUNTS_MOVED;
+static void test_pump(void)
+{
+    ESP_LOGI(TAG, "=== POMPKA ===");
 
-        /* Prad rozdziela dwie zupelnie rozne awarie: albo silnik sie nie
-         * kreci (problem zasilania lub sygnalu), albo kreci sie, ale enkoder
-         * nie liczy. Bez tego rozroznienia podpowiedz byla zgadywaniem. */
-        const char *hint;
-        if (current_known && !current_flowed) {
-            hint = "przez bocznik nie poplynal prad - sterownik nie pobiera mocy. "
-                   "Sprawdz w tej kolejnosci: WSPOLNA MASA miedzy ESP32 a MDD10A "
-                   "(przy zasilaniu ESP z USB to najczestsza przyczyna), "
-                   "zasilanie 12V samego MDD10A za bocznikiem INA226, "
-                   "silniki w zaciskach M1A/M1B i M2A/M2B";
-        } else if (current_known) {
-            hint = "prad plynie, wiec silnik dostaje moc, ale enkoder nie liczy: "
-                   "sprawdz zasilanie enkodera z 3,3V (nie z 5V), piny A i B "
-                   "oraz czy masa enkodera jest wspolna z ESP32";
+    flora_pump_cfg_t cfg = FLORA_PUMP_DEFAULT_CFG();
+    cfg.pump_gpio = FLORA_PIN_PUMP;
+    /* Czujnik poziomu niepodlaczony. GPIO_NUM_NC wylacza kontrole calkowicie -
+     * wpiecie tu GPIO10 bylo by gorsze niz jej brak, bo pin wiszacy w
+     * powietrzu daje losowe stany i pompka ruszalaby albo blokowala sie
+     * przypadkowo. */
+    cfg.level_gpio       = GPIO_NUM_NC;
+    cfg.max_run_ms       = TEST_PUMP_MAX_RUN_MS;
+    cfg.min_interval_ms  = TEST_PUMP_INTERVAL_MS;
+    cfg.daily_limit_ms   = TEST_PUMP_DAILY_MS;
+    cfg.done_cb          = pump_done_cb;
+
+    esp_err_t err = flora_pump_init(&cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "  inicjalizacja pompki nie powiodla sie: %s", esp_err_to_name(err));
+        return;
+    }
+    s_pump_ready = true;
+
+    ESP_LOGW(TAG, "  ----------------------------------------------");
+    ESP_LOGW(TAG, "  BRAK CZUJNIKA POZIOMU - zero ochrony przed sucho");
+    ESP_LOGW(TAG, "  Upewnij sie, ze jest woda albo odlacz pompke.");
+    ESP_LOGW(TAG, "  Start za 5 s, lacznie popracuje okolo 3 s.");
+    ESP_LOGW(TAG, "  ----------------------------------------------");
+    for (int i = 5; i > 0; i--) {
+        ESP_LOGW(TAG, "  %d...", i);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    /* 1. Zwykle dozowanie. */
+    ESP_LOGI(TAG, "  [1] dawka %d ms", TEST_PUMP_DOSE_MS);
+    if (flora_pump_run_ms(TEST_PUMP_DOSE_MS) == ESP_OK) {
+        wait_for_pump();
+    } else {
+        ESP_LOGE(TAG, "      nie wystartowala");
+    }
+
+    /* 2. Natychmiastowa druga proba: ma sie odbic od min_interval_ms. */
+    ESP_LOGI(TAG, "  [2] proba zaraz po poprzedniej (spodziewana odmowa)");
+    err = flora_pump_run_ms(TEST_PUMP_DOSE_MS);
+    if (err == ESP_ERR_INVALID_STATE) {
+        ESP_LOGI(TAG, "      OK: odmowiono, przerwa miedzy dawkami dziala");
+    } else {
+        ESP_LOGE(TAG, "      BLAD: zabezpieczenie nie zadzialalo (%s)", esp_err_to_name(err));
+        flora_pump_stop();
+    }
+
+    /* 3. Zadanie ponad limit: ma zostac przyciete do max_run_ms. */
+    vTaskDelay(pdMS_TO_TICKS(TEST_PUMP_INTERVAL_MS + 200));
+    ESP_LOGI(TAG, "  [3] zadanie 10000 ms przy limicie %d ms (spodziewane przyciecie)",
+             TEST_PUMP_MAX_RUN_MS);
+    int64_t t0 = esp_timer_get_time();
+    if (flora_pump_run_ms(10000) == ESP_OK) {
+        wait_for_pump();
+        int64_t ran = (esp_timer_get_time() - t0) / 1000;
+        if (ran < TEST_PUMP_MAX_RUN_MS + 500) {
+            ESP_LOGI(TAG, "      OK: trwalo %" PRId64 " ms zamiast 10000", ran);
         } else {
-            hint = "brak zliczen: sprawdz zasilanie enkodera z 3,3V, piny A/B, "
-                   "zasilanie silnika i czy MDD10A ma 12V";
-        }
-        check(moved, what, hint);
-
-        if (moved) {
-            snprintf(what, sizeof(what), "%s kolo w dobrym kierunku", wheels[i].wheel);
-            bool right_way = (wheels[i].delta > 0) == (wheels[i].expect > 0);
-            check(right_way, what,
-                  "kreci sie odwrotnie: ustaw invert=true dla tego kola "
-                  "(w flora_motors gdy wirnik jedzie zle, w flora_encoders gdy "
-                  "jedzie dobrze a zliczenia maleja)");
+            ESP_LOGE(TAG, "      BLAD: trwalo %" PRId64 " ms, limit nie zadzialal", ran);
         }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(SETTLE_MS));
+    flora_pump_stats_t st;
+    flora_pump_get_stats(&st);
+    ESP_LOGI(TAG, "  statystyki: %" PRIu32 " dawek, lacznie %" PRIu32 " ms, "
+                  "odmowy: %" PRIu32 " (przerwa) %" PRIu32 " (limit) %" PRIu32 " (sucho)",
+             st.dose_count, st.total_run_ms,
+             st.refused_interval, st.refused_limit, st.refused_dry);
 }
+
+/* ================= PRZEBIEG ================= */
 
 static void bringup_task(void *arg)
 {
-    ESP_LOGW(TAG, "========================================================");
-    ESP_LOGW(TAG, " TEST NAPEDU - kola musza byc w powietrzu!");
-    ESP_LOGW(TAG, " Start za 5 s, odlacz zasilanie jesli robot stoi na ziemi");
-    ESP_LOGW(TAG, "========================================================");
-    for (int i = 5; i > 0; i--) {
-        ESP_LOGW(TAG, " %d...", i);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
-    ESP_LOGI(TAG, "=== stan spoczynkowy ===");
-    log_power("na postoju");
-    ESP_ERROR_CHECK(flora_encoders_reset());
-
-    /* Kazde kolo osobno: wylapuje zamienione kanaly i zle kierunki.
-     * Drugie kolo ma w tym czasie stac - jesli rusza, cos jest przepiete. */
-    run_leg("lewe kolo w przod",  TEST_POWER, 0.0f, +1, 0);
-    run_leg("lewe kolo w tyl",   -TEST_POWER, 0.0f, -1, 0);
-    run_leg("prawe kolo w przod", 0.0f,  TEST_POWER, 0, +1);
-    run_leg("prawe kolo w tyl",   0.0f, -TEST_POWER, 0, -1);
-
-    /* Razem: tak jak robot naprawde jezdzi. */
-    run_leg("jazda prosto",  TEST_POWER,  TEST_POWER, +1, +1);
-    run_leg("jazda w tyl",  -TEST_POWER, -TEST_POWER, -1, -1);
-    run_leg("obrot w miejscu", TEST_POWER, -TEST_POWER, +1, -1);
-
-    ESP_LOGI(TAG, "=== po tescie ===");
-    log_power("na postoju");
+    test_temperature();
+    test_pump();
 
     ESP_LOGI(TAG, "========================================================");
-    if (s_checks_failed == 0) {
-        ESP_LOGI(TAG, " WYNIK: wszystko przeszlo (%d sprawdzen)", s_checks_passed);
-    } else {
-        ESP_LOGE(TAG, " WYNIK: %d przeszlo, %d nie przeszlo", s_checks_passed, s_checks_failed);
-    }
+    ESP_LOGI(TAG, " Podglad na zywo. Ctrl+] konczy monitor.");
     ESP_LOGI(TAG, "========================================================");
 
-    /* Telemetria w kolko, zeby dalo sie recznie pokrecic kolami i patrzec
-     * na zliczenia - najszybszy sposob na sprawdzenie kierunkow bez silnikow. */
-    ESP_LOGI(TAG, "przechodze w tryb podgladu: zakrec kolem recznie i patrz na zliczenia");
-    flora_encoders_sample_t prev;
-    ESP_ERROR_CHECK(flora_encoders_read(&prev));
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        flora_encoders_sample_t now;
-        if (flora_encoders_read(&now) != ESP_OK) {
-            continue;
-        }
-        float sl = 0.0f, sr = 0.0f;
-        flora_encoders_speed_mm_s(&prev, &now, &sl, &sr);
+        float celsius = FLORA_TEMP_INVALID;
+        bool have_temp = s_temp_ready && flora_temp_read(0, &celsius) == ESP_OK;
 
-        flora_ina226_reading_t r = { 0 };
-        bool have_power = s_ina && flora_ina226_read(s_ina, &r) == ESP_OK;
-
-        if (have_power) {
-            ESP_LOGI(TAG, "L %+8" PRId64 " (%+6.1f mm/s)  P %+8" PRId64 " (%+6.1f mm/s)  %.2f V  %.3f A",
-                     now.left_counts, sl, now.right_counts, sr, r.bus_voltage_v, r.current_a);
+        if (have_temp) {
+            ESP_LOGI(TAG, "temperatura %.2f C | szyna %.2f V | pompka %s",
+                     celsius, bus_voltage(),
+                     flora_pump_is_running() ? "pracuje" : "stoi");
         } else {
-            ESP_LOGI(TAG, "L %+8" PRId64 " (%+6.1f mm/s)  P %+8" PRId64 " (%+6.1f mm/s)  (brak INA226)",
-                     now.left_counts, sl, now.right_counts, sr);
+            ESP_LOGI(TAG, "temperatura ---- | szyna %.2f V | pompka %s",
+                     bus_voltage(), flora_pump_is_running() ? "pracuje" : "stoi");
         }
-        prev = now;
+
+        /* flora_temp_read blokuje juz na czas konwersji, wiec dopelniamy
+         * tylko reszte sekundy. */
+        uint32_t conv = s_temp_ready ? flora_temp_conversion_ms() : 0;
+        vTaskDelay(pdMS_TO_TICKS(conv < 1000 ? 1000 - conv : 100));
     }
 }
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "doniczka-robot, jednostka dolna, rozruch peryferiow");
+    ESP_LOGI(TAG, "doniczka-robot, jednostka dolna: hydraulika i temperatura");
 
     ESP_ERROR_CHECK(i2c_bus_setup());
-
-    uint8_t i2c_addrs[16];
-    int i2c_found = i2c_scan(i2c_addrs, sizeof(i2c_addrs));
-
-    if (ina226_autodetect(i2c_addrs, i2c_found) != ESP_OK) {
-        /* Brak INA226 nie blokuje testu napedu - tracimy tylko pomiar pradu. */
-        ESP_LOGW(TAG, "nie znalazlem INA226 na magistrali, test pojdzie bez pomiaru pradu");
-    }
-
-    flora_motors_cfg_t motors_cfg = FLORA_MOTORS_DEFAULT_CFG();
-    motors_cfg.left  = (flora_motor_cfg_t){ .pwm_gpio = FLORA_PIN_MOTOR_L_PWM,
-                                            .dir_gpio = FLORA_PIN_MOTOR_L_DIR,
-                                            .invert   = false };
-    /* Silniki montowane lustrzanie, wiec prawy jedzie odwrotnie.
-     * Jesli test pokaze zly kierunek, przestaw te flage. */
-    motors_cfg.right = (flora_motor_cfg_t){ .pwm_gpio = FLORA_PIN_MOTOR_R_PWM,
-                                            .dir_gpio = FLORA_PIN_MOTOR_R_DIR,
-                                            .invert   = true };
-    ESP_ERROR_CHECK(flora_motors_init(&motors_cfg));
-
-    flora_encoders_cfg_t enc_cfg = FLORA_ENCODERS_DEFAULT_CFG();
-    enc_cfg.left  = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_L_A,
-                                           .b_gpio = FLORA_PIN_ENC_L_B,
-                                           .invert = false };
-    enc_cfg.right = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_R_A,
-                                           .b_gpio = FLORA_PIN_ENC_R_B,
-                                           .invert = true };
-    enc_cfg.mm_per_count = FLORA_MM_PER_COUNT;
-    ESP_ERROR_CHECK(flora_encoders_init(&enc_cfg));
-
-    ESP_LOGI(TAG, "przelozenie %.0f:1, %.4f mm na zliczenie, %.0f zliczen na obrot kola",
-             FLORA_GEAR_RATIO, FLORA_MM_PER_COUNT, FLORA_COUNTS_PER_WHEEL_REV);
+    ina226_autodetect();
 
     xTaskCreate(bringup_task, "bringup", 4096, NULL, 5, NULL);
 }

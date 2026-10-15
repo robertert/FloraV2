@@ -190,6 +190,41 @@ esp_err_t flora_ina226_read_current(flora_ina226_handle_t h, float *amps)
     return ESP_OK;
 }
 
+esp_err_t flora_ina226_dump(flora_ina226_handle_t h)
+{
+    ESP_RETURN_ON_FALSE(h, ESP_ERR_INVALID_ARG, TAG, "h == NULL");
+
+    static const struct { uint8_t reg; const char *name; } regs[] = {
+        { REG_CONFIG,      "CONFIG     " },
+        { REG_SHUNT_V,     "SHUNT_V    " },
+        { REG_BUS_V,       "BUS_V      " },
+        { REG_POWER,       "POWER      " },
+        { REG_CURRENT,     "CURRENT    " },
+        { REG_CALIBRATION, "CALIBRATION" },
+        { REG_MANUF_ID,    "MANUF_ID   " },
+        { REG_DIE_ID,      "DIE_ID     " },
+    };
+
+    ESP_LOGI(TAG, "zrzut rejestrow:");
+    for (size_t i = 0; i < sizeof(regs) / sizeof(regs[0]); i++) {
+        uint16_t v = 0;
+        if (reg_read(h->dev, regs[i].reg, &v) != ESP_OK) {
+            ESP_LOGW(TAG, "  0x%02X %s = blad odczytu", regs[i].reg, regs[i].name);
+            continue;
+        }
+        ESP_LOGI(TAG, "  0x%02X %s = 0x%04X (%d)", regs[i].reg, regs[i].name, v, (int16_t)v);
+    }
+
+    /* Napiecie bocznika w mikrowoltach: najczulszy wskaznik tego, czy przez
+     * rezystor plynie jakikolwiek prad. */
+    uint16_t raw_shunt = 0;
+    ESP_RETURN_ON_ERROR(reg_read(h->dev, REG_SHUNT_V, &raw_shunt), TAG, "shunt");
+    float uv = (float)(int16_t)raw_shunt * 2.5f;
+    ESP_LOGI(TAG, "  bocznik: %d zliczen = %.1f uV = %.1f mA przy 10 mOhm",
+             (int16_t)raw_shunt, uv, uv / 10.0f);
+    return ESP_OK;
+}
+
 float flora_ina226_current_lsb(flora_ina226_handle_t h)
 {
     return h ? h->current_lsb : 0.0f;
