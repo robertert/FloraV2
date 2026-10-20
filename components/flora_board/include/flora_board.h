@@ -66,6 +66,18 @@
 #define FLORA_MM_PER_COUNT \
     ((3.14159265f * FLORA_WHEEL_DIAMETER_MM) / FLORA_COUNTS_PER_WHEEL_REV)
 
+/* ---- Kalibracja czujnika wilgotnosci gleby ----
+ * Zmierzone 2026-10-15 na egzemplarzu zamontowanym w robocie.
+ * Czujnik pojemnosciowy: sucho daje WYZSZY odczyt niz mokro.
+ *
+ * Uwaga przy interpretacji: punkt "mokro" zdjety w czystej wodzie oznacza
+ * pelne zanurzenie, czego gleba nigdy nie osiaga. W ziemi odczyty beda
+ * siegac realnie 60-80%, i to jest poprawne - to skala wzgledna, a nie
+ * objetosciowa zawartosc wody.
+ */
+#define FLORA_SOIL_RAW_DRY  3340   /**< w powietrzu */
+#define FLORA_SOIL_RAW_WET  1125   /**< zanurzony w wodzie (zmierzone 1120-1130) */
+
 /* ---- Zasilanie ---- */
 #define FLORA_SHUNT_MILLIOHM 10.0f /**< INA226 z rezystorem R010 */
 #define FLORA_BATTERY_CELLS 4      /**< LiFePO4 4S, 12,8V nominalnie */
