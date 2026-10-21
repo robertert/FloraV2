@@ -1,5 +1,6 @@
-idf_component_register(SRCS "main.c"
+idf_component_register(SRCS "main.c" "bringup_link.c"
                        INCLUDE_DIRS "."
                        REQUIRES flora_head_board flora_i2cmux flora_veml7700
                                 flora_bme280 flora_icm20948
-                                esp_driver_i2c)
+                                flora_link flora_msgs
+                                esp_driver_i2c esp_timer)

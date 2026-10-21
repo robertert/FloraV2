@@ -25,6 +25,7 @@
 #include "flora_veml7700.h"
 #include "flora_bme280.h"
 #include "flora_icm20948.h"
+#include "bringup_link.h"
 
 static const char *TAG = "glowica";
 
@@ -250,6 +251,10 @@ static void test_imu(void)
 
 static void bringup_task(void *arg)
 {
+    /* Najpierw lacze - test na petli zwrotnej nie wymaga zadnego sprzetu
+     * poza sama plytka, wiec przechodzi niezaleznie od stanu czujnikow. */
+    bringup_link_loopback();
+
     if (bus_scan() == 0) {
         ESP_LOGE(TAG, "brak urzadzen - przerywam");
         vTaskDelete(NULL);
