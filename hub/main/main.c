@@ -23,6 +23,7 @@
 #include "bringup_drive.h"
 #include "flora_board.h"
 #include "flora_ina226.h"
+#include "flora_store.h"
 
 static const char *TAG = "dol";
 
@@ -71,6 +72,12 @@ static void bringup_task(void *arg)
 void app_main(void)
 {
     ESP_LOGI(TAG, "doniczka-robot, jednostka dolna: test napedu na platformie");
+
+    /* NVS jako pierwsze: trzymamy w nim kalibracje, a dodatkowo potrzebuja
+     * go WiFi (kalibracja PHY) i BLE, gdy dojda. Wywolanie jest idempotentne. */
+    ESP_ERROR_CHECK(flora_store_init());
+    flora_store_report_space();
+
     ina226_setup();
     xTaskCreate(bringup_task, "bringup", 4096, NULL, 5, NULL);
 }

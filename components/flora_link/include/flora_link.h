@@ -59,6 +59,21 @@ typedef struct {
     uart_port_t port;
     int         tx_gpio;
     int         rx_gpio;
+
+    /**
+     * Predkosc transmisji.
+     *
+     * Domyslne 57600 jest CELOWO nizsze, niz pozwala sprzet. Policzony ruch
+     * to okolo 391 B/s (telemetria 20 Hz + slonce 1 Hz + pogoda 0,1 Hz),
+     * czyli nadal tylko 7% wykorzystania i 15-krotny zapas. Kabel biegnie
+     * w maszcie obok przewodow silnikowych, a to pojedynczy UART 3,3 V bez
+     * symetryzacji i bez tlumienia zaklocen wspolnych - dluzszy bit to
+     * wiekszy margines na sprzezone impulsy. Przepustowosci i tak nie
+     * brakuje, wiec wolniej znaczy tu pewniej.
+     *
+     * Jesli bedziesz to stroil, porownuj licznik err_crc przy pracujacych
+     * silnikach, a nie na spoczywajacym stole.
+     */
     uint32_t    baud_rate;
 
     uint8_t     proto_version;   /**< zwykle FLORA_MSGS_VERSION */
@@ -95,7 +110,7 @@ typedef struct {
 #define FLORA_LINK_DEFAULT_CFG()        \
     {                                   \
         .port             = UART_NUM_1, \
-        .baud_rate        = 115200,     \
+        .baud_rate        = 57600,     \
         .rx_ring_bytes    = 1024,       \
         .task_stack_bytes = 4096,       \
         .task_priority    = 10,         \

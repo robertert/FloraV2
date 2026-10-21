@@ -78,6 +78,27 @@
 #define FLORA_SOIL_RAW_DRY  3340   /**< w powietrzu */
 #define FLORA_SOIL_RAW_WET  1125   /**< zanurzony w wodzie (zmierzone 1120-1130) */
 
+/* ---- Klucze w NVS ----
+ * Nazwy sa po angielsku, jak reszta identyfikatorow, i trzymane obok
+ * wartosci domyslnych - bo to wlasnie ta para musi sie zgadzac. Stale
+ * zamiast literalow, zeby literowka nie przechodzila po cichu jako
+ * "klucza nie ma, biore domyslna".
+ *
+ * Limit NVS to 15 znakow na klucz i na nazwe przestrzeni.
+ */
+#define FLORA_NVS_NS_CALIB     "calib"
+#define FLORA_NVS_SOIL_DRY     "soil_dry"
+#define FLORA_NVS_SOIL_WET     "soil_wet"
+#define FLORA_NVS_GEAR_RATIO   "gear_ratio"
+#define FLORA_NVS_ENC_SWAPPED  "enc_swapped"
+#define FLORA_NVS_MOTOR_L_INV  "motor_l_inv"
+#define FLORA_NVS_MOTOR_R_INV  "motor_r_inv"
+#define FLORA_NVS_ENC_L_INV    "enc_l_inv"
+#define FLORA_NVS_ENC_R_INV    "enc_r_inv"
+#define FLORA_NVS_GYRO_BIAS_X  "gyro_bias_x"
+#define FLORA_NVS_GYRO_BIAS_Y  "gyro_bias_y"
+#define FLORA_NVS_GYRO_BIAS_Z  "gyro_bias_z"
+
 /* ---- Zasilanie ---- */
 #define FLORA_SHUNT_MILLIOHM 10.0f /**< INA226 z rezystorem R010 */
 #define FLORA_BATTERY_CELLS 4      /**< LiFePO4 4S, 12,8V nominalnie */

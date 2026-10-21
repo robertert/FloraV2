@@ -22,6 +22,7 @@
 #include "flora_soil.h"
 #include "flora_sonar.h"
 #include "flora_temp.h"
+#include "flora_store.h"
 
 static const char *TAG = "czujniki";
 
@@ -34,9 +35,29 @@ static void test_soil(void)
     ESP_LOGI(TAG, "=== WILGOTNOSC GLEBY ===");
 
     flora_soil_cfg_t cfg = FLORA_SOIL_DEFAULT_CFG();
-    cfg.gpio    = FLORA_PIN_SOIL_ADC;
+    cfg.gpio = FLORA_PIN_SOIL_ADC;
+
+    /* Kalibracja z NVS, a wartosci z flora_board.h sluza juz tylko jako
+     * domyslne przy pierwszym uruchomieniu. Dzieki temu poprawka progow
+     * w terenie nie wymaga rekompilacji i wgrywania. */
     cfg.raw_dry = FLORA_SOIL_RAW_DRY;
     cfg.raw_wet = FLORA_SOIL_RAW_WET;
+
+    flora_store_t store = NULL;
+    if (flora_store_open(FLORA_NVS_NS_CALIB, &store) == ESP_OK) {
+        int32_t dry = FLORA_SOIL_RAW_DRY, wet = FLORA_SOIL_RAW_WET;
+        flora_store_get_i32(store, FLORA_NVS_SOIL_DRY, &dry, FLORA_SOIL_RAW_DRY);
+        flora_store_get_i32(store, FLORA_NVS_SOIL_WET, &wet, FLORA_SOIL_RAW_WET);
+        cfg.raw_dry = dry;
+        cfg.raw_wet = wet;
+
+        bool from_nvs = flora_store_has(store, FLORA_NVS_SOIL_DRY);
+        ESP_LOGI(TAG, "  kalibracja: sucho %d, mokro %d (%s)",
+                 (int)dry, (int)wet, from_nvs ? "z NVS" : "domyslna, nie zapisana");
+        flora_store_close(store);
+    } else {
+        ESP_LOGW(TAG, "  NVS niedostepne - uzywam kalibracji wkompilowanej");
+    }
 
     esp_err_t err = flora_soil_init(&cfg);
     if (err != ESP_OK) {
