@@ -33,6 +33,8 @@ static struct {
     bool                     guard_on;
     bool                     stalled;
     flora_motors_wheel_t     stalled_wheel;
+    flora_motors_stall_reason_t stall_reason;
+    uint32_t                 over_ms;     /**< jak dlugo prad jest ponad progiem */
 } s_m;
 
 /** Wystawia moc na kanal bez zadnych sprawdzen. Zaklada trzymana blokade. */
@@ -143,6 +145,30 @@ static bool guard_check_wheel(flora_motors_wheel_t which, float power)
     return w->idle_ms >= s_m.guard.grace_ms;
 }
 
+/**
+ * Sprawdza prad. Zwraca true przy utyku.
+ *
+ * Liczymy czas ponad progiem zamiast reagowac na pierwsza probke: impuls
+ * rozruchowy silnika jest krotki i sam w sobie nie jest usterka.
+ */
+static bool guard_check_current(float *out_amps)
+{
+    if (!s_m.guard.current_cb) {
+        return false;
+    }
+    float a = s_m.guard.current_cb(s_m.guard.current_ctx);
+    *out_amps = a;
+
+    /* NAN znaczy, ze pomiar jest chwilowo niedostepny - wtedy ten detektor
+     * po prostu milczy, zamiast zglaszac falszywy alarm. */
+    if (isnan(a) || a < s_m.guard.stall_current_a) {
+        s_m.over_ms = 0;
+        return false;
+    }
+    s_m.over_ms += s_m.guard.check_ms;
+    return s_m.over_ms >= s_m.guard.current_grace_ms;
+}
+
 static void guard_timer_cb(void *arg)
 {
     flora_motors_stall_cb_t cb = NULL;
@@ -151,9 +177,18 @@ static void guard_timer_cb(void *arg)
     float power = 0.0f;
     bool fire = false;
 
+    flora_motors_stall_reason_t reason = FLORA_MOTORS_STALL_NO_MOTION;
+
     xSemaphoreTake(s_m.lock, portMAX_DELAY);
     if (s_m.guard_on && !s_m.stalled) {
-        if (guard_check_wheel(FLORA_MOTORS_WHEEL_LEFT, s_m.last_left)) {
+        /* Prad sprawdzamy jako pierwszy: jest niezalezny od enkoderow,
+         * wiec lapie takze przypadek, w ktorym to ENKODER jest zepsuty. */
+        float amps = 0.0f;
+        if (guard_check_current(&amps)) {
+            reason = FLORA_MOTORS_STALL_OVERCURRENT;
+            power  = amps;
+            fire   = true;
+        } else if (guard_check_wheel(FLORA_MOTORS_WHEEL_LEFT, s_m.last_left)) {
             which = FLORA_MOTORS_WHEEL_LEFT;
             power = s_m.last_left;
             fire  = true;
@@ -169,6 +204,8 @@ static void guard_timer_cb(void *arg)
             cut_power();
             s_m.stalled       = true;
             s_m.stalled_wheel = which;
+            s_m.stall_reason  = reason;
+            s_m.over_ms       = 0;
             cb  = s_m.guard.on_stall;
             ctx = s_m.guard.stall_ctx;
         }
@@ -176,12 +213,20 @@ static void guard_timer_cb(void *arg)
     xSemaphoreGive(s_m.lock);
 
     if (fire) {
-        ESP_LOGE(TAG, "UTYK: %s kolo nie rusza przy mocy %.0f%% przez %" PRIu32 " ms. "
-                      "Oba silniki odciete, blokada zatrzasnieta.",
-                 which == FLORA_MOTORS_WHEEL_LEFT ? "lewe" : "prawe",
-                 power, s_m.guard.grace_ms);
+        if (reason == FLORA_MOTORS_STALL_OVERCURRENT) {
+            ESP_LOGE(TAG, "UTYK (prad): %.2f A ponad progiem %.2f A przez %" PRIu32 " ms. "
+                          "Oba silniki odciete, blokada zatrzasnieta.",
+                     power, s_m.guard.stall_current_a, s_m.guard.current_grace_ms);
+            ESP_LOGE(TAG, "  pomiar obejmuje cala szyne, wiec zrodlem moze byc tez "
+                          "pompka albo maszt - sprawdz, co bylo zalaczone");
+        } else {
+            ESP_LOGE(TAG, "UTYK (enkoder): %s kolo nie rusza przy mocy %.0f%% przez "
+                          "%" PRIu32 " ms. Oba silniki odciete, blokada zatrzasnieta.",
+                     which == FLORA_MOTORS_WHEEL_LEFT ? "lewe" : "prawe",
+                     power, s_m.guard.grace_ms);
+        }
         if (cb) {
-            cb(which, power, ctx);
+            cb(reason, which, power, ctx);
         }
     }
 }
@@ -196,6 +241,11 @@ esp_err_t flora_motors_stall_guard_enable(const flora_motors_stall_cfg_t *cfg)
                         "grace_ms (%" PRIu32 ") musi byc nie mniejsze niz check_ms (%" PRIu32 ")",
                         cfg->grace_ms, cfg->check_ms);
     ESP_RETURN_ON_FALSE(!s_m.guard_on, ESP_ERR_INVALID_STATE, TAG, "straznik juz dziala");
+    ESP_RETURN_ON_FALSE(!cfg->current_cb ||
+                        (cfg->stall_current_a > 0.0f && cfg->current_grace_ms >= cfg->check_ms),
+                        ESP_ERR_INVALID_ARG, TAG,
+                        "detektor pradowy wymaga dodatniego progu i current_grace_ms "
+                        "nie mniejszego niz check_ms");
 
     xSemaphoreTake(s_m.lock, portMAX_DELAY);
     s_m.guard   = *cfg;
@@ -213,9 +263,16 @@ esp_err_t flora_motors_stall_guard_enable(const flora_motors_stall_cfg_t *cfg)
                         TAG, "start timera straznika");
     s_m.guard_on = true;
 
-    ESP_LOGI(TAG, "straznik utyku: sprawdzanie co %" PRIu32 " ms, tolerancja %" PRIu32 " ms, "
+    ESP_LOGI(TAG, "straznik utyku: co %" PRIu32 " ms; enkodery - tolerancja %" PRIu32 " ms, "
                   "prog mocy %.0f%%, prog ruchu %" PRId64 " zliczen",
              cfg->check_ms, cfg->grace_ms, cfg->min_power, cfg->min_counts);
+    if (cfg->current_cb) {
+        ESP_LOGI(TAG, "  drugi detektor: prad powyzej %.2f A przez %" PRIu32 " ms",
+                 cfg->stall_current_a, cfg->current_grace_ms);
+    } else {
+        ESP_LOGW(TAG, "  detektor pradowy WYLACZONY - przy awarii enkodera naped "
+                      "zostanie bez ochrony");
+    }
     return ESP_OK;
 }
 
@@ -239,11 +296,17 @@ flora_motors_wheel_t flora_motors_stalled_wheel(void)
     return s_m.stalled_wheel;
 }
 
+flora_motors_stall_reason_t flora_motors_stall_reason(void)
+{
+    return s_m.stall_reason;
+}
+
 esp_err_t flora_motors_clear_stall(void)
 {
     ESP_RETURN_ON_FALSE(s_m.initialized, ESP_ERR_INVALID_STATE, TAG, "nie zainicjalizowano");
     xSemaphoreTake(s_m.lock, portMAX_DELAY);
     s_m.stalled = false;
+    s_m.over_ms = 0;
     memset(s_m.wheel, 0, sizeof(s_m.wheel));
     xSemaphoreGive(s_m.lock);
     ESP_LOGW(TAG, "blokada po utyku zdjeta");

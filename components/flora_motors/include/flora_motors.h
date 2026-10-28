@@ -102,8 +102,27 @@ typedef enum {
 typedef int64_t (*flora_motors_counts_cb_t)(flora_motors_wheel_t wheel, void *ctx);
 
 /** Wolane po wykryciu utyku, z kontekstu zadania timera. */
-typedef void (*flora_motors_stall_cb_t)(flora_motors_wheel_t wheel,
-                                        float power, void *ctx);
+typedef enum {
+    /** Enkoder nie liczy mimo zadanej mocy. Wskazuje konkretne kolo. */
+    FLORA_MOTORS_STALL_NO_MOTION,
+    /** Prad powyzej progu. Nie wskazuje kola - mierzymy cala szyne. */
+    FLORA_MOTORS_STALL_OVERCURRENT,
+} flora_motors_stall_reason_t;
+
+/**
+ * Wolane po wykryciu utyku, z kontekstu zadania timera.
+ *
+ * @param wheel przy NO_MOTION kolo, ktore stanelo; przy OVERCURRENT
+ *              bez znaczenia, bo pomiar obejmuje cala szyne
+ * @param value przy NO_MOTION zadana moc w procentach, przy OVERCURRENT
+ *              zmierzony prad w amperach
+ */
+typedef void (*flora_motors_stall_cb_t)(flora_motors_stall_reason_t reason,
+                                        flora_motors_wheel_t wheel,
+                                        float value, void *ctx);
+
+/** Zwraca biezacy prad szyny w amperach, albo NAN gdy pomiar niedostepny. */
+typedef float (*flora_motors_current_cb_t)(void *ctx);
 
 typedef struct {
     flora_motors_counts_cb_t counts_cb;   /**< wymagany */
@@ -115,6 +134,28 @@ typedef struct {
     uint32_t grace_ms;    /**< ile tolerowac bezruch, zanim uznamy utyk */
     float    min_power;   /**< ponizej tej mocy nie sprawdzamy (silnik ma prawo stac) */
     int64_t  min_counts;  /**< tyle zliczen na okres uznajemy juz za ruch */
+
+    /* --- Drugi detektor: prad ---
+     *
+     * Po co, skoro enkodery juz pilnuja: detektor enkoderowy jest slepy
+     * na wlasna awarie. Urwany przewod enkodera przy KRECACYM sie silniku
+     * wyglada dla niego jak utyk, a zablokowany silnik z martwym enkoderem
+     * moze zostac przeoczony. Prad jest od enkoderow calkiem niezalezny.
+     *
+     * Zasada fizyczna: prad w silniku pradu stalego ogranicza sila
+     * przeciwelektromotoryczna, proporcjonalna do obrotow. Przy zerowych
+     * obrotach zostaje sama rezystancja uzwojenia, wiec prad skacze
+     * kilkukrotnie. Tak zginal prawy silnik 19.10.2026.
+     *
+     * UWAGA NA WSPOLNA SZYNE: INA226 mierzy CALY pobor, wiec pompka
+     * i maszt tez sie licza. Prog musi lezec powyzej sumy normalnego
+     * poboru wszystkiego naraz, inaczej podlewanie w trakcie jazdy
+     * odcieloby naped.
+     */
+    flora_motors_current_cb_t current_cb;   /**< NULL wylacza ten detektor */
+    void                     *current_ctx;
+    float    stall_current_a;    /**< prad uznawany za utyk */
+    uint32_t current_grace_ms;   /**< jak dlugo musi sie utrzymac */
 } flora_motors_stall_cfg_t;
 
 /**
@@ -122,7 +163,22 @@ typedef struct {
  * i na pokonanie tarcia spoczynkowego, a jednoczesnie zablokowany silnik
  * grzeje sie przez niecala sekunde, czyli bez szkody.
  */
-#define FLORA_MOTORS_STALL_DEFAULT_CFG()      {                                             .check_ms   = 50,                         .grace_ms   = 400,                        .min_power  = 15.0f,                      .min_counts = 5,                      }
+/*
+ * grace_ms = 400 to kompromis: tyle wystarczy na rozbieg z bezwladnosci
+ * i na pokonanie tarcia spoczynkowego, a zablokowany silnik grzeje sie
+ * przez niecala sekunde, czyli bez szkody.
+ *
+ * stall_current_a = 2,5 A wyprowadzone z pomiaru 27.10.2026: dwa silniki
+ * bez obciazenia na 80% mocy biora 0,67 A. Na trawie i pod gore bedzie
+ * wiecej, ale do 2,5 A jest spory zapas, a pojedynczy zablokowany silnik
+ * przy uzwojeniu rzedu 4 omow siegnie okolo 3 A. Prog lezy miedzy tymi
+ * wartosciami. Po pierwszych jazdach po trawie sprawdz realny pobor
+ * i podnies, jesli bedzie blisko.
+ *
+ * current_grace_ms = 300 przepuszcza impuls rozruchowy, ktory jest krotki,
+ * a lapie utyk trwaly.
+ */
+#define FLORA_MOTORS_STALL_DEFAULT_CFG() { .check_ms = 50, .grace_ms = 400, .min_power = 15.0f, .min_counts = 5, .stall_current_a = 2.5f, .current_grace_ms = 300, }
 
 esp_err_t flora_motors_stall_guard_enable(const flora_motors_stall_cfg_t *cfg);
 esp_err_t flora_motors_stall_guard_disable(void);
@@ -130,8 +186,11 @@ esp_err_t flora_motors_stall_guard_disable(void);
 /** true, gdy blokada jest zatrzasnieta po wykrytym utyku. */
 bool flora_motors_is_stalled(void);
 
-/** Kolo, ktore utknelo. Sensowne tylko gdy flora_motors_is_stalled(). */
+/** Kolo, ktore utknelo. Sensowne tylko przy FLORA_MOTORS_STALL_NO_MOTION. */
 flora_motors_wheel_t flora_motors_stalled_wheel(void);
+
+/** Co wykrylo utyk. Sensowne tylko gdy flora_motors_is_stalled(). */
+flora_motors_stall_reason_t flora_motors_stall_reason(void);
 
 /**
  * @brief Zdejmuje blokade po utyku.

@@ -21,6 +21,8 @@
 #include "driver/i2c_master.h"
 
 #include "bringup_drive.h"
+#include "bringup_net.h"
+#include "bringup_power.h"
 #include "flora_board.h"
 #include "flora_ina226.h"
 #include "flora_store.h"
@@ -63,15 +65,23 @@ static void ina226_setup(void)
 
 static void bringup_task(void *arg)
 {
+    /* Biezacy przedmiot rozruchu. Poprzednie, juz zaliczone, czekaja
+     * w swoich plikach i wracaja jednym wywolaniem:
+     *   bringup_power_run(s_i2c_bus) - weryfikacja INA226
+     *   bringup_drive_calibrate(s_ina, 1) - kalibracja przelozenia
+     *   bringup_hydro_run(s_ina)   - pompka, DS18B20
+     *   bringup_sensors_run(true)  - gleba, sonar
+     *   bringup_net_run()          - WiFi, MQTT
+     */
     bringup_drive_run(s_ina);
 
-    ESP_LOGI(TAG, "test zakonczony, zadanie konczy prace");
+    ESP_LOGI(TAG, "test zakonczony");
     vTaskDelete(NULL);
 }
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "doniczka-robot, jednostka dolna: test napedu na platformie");
+    ESP_LOGI(TAG, "doniczka-robot, jednostka dolna: test napedu ze strażnikiem");
 
     /* NVS jako pierwsze: trzymamy w nim kalibracje, a dodatkowo potrzebuja
      * go WiFi (kalibracja PHY) i BLE, gdy dojda. Wywolanie jest idempotentne. */

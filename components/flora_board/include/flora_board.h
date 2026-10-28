@@ -56,8 +56,49 @@
  */
 #define FLORA_ENCODER_PPR 11      /**< impulsow na obrot walu silnika */
 #define FLORA_ENCODER_QUAD_MULT 4 /**< dekodowanie x4 (oba zbocza, oba kanaly) */
-#define FLORA_GEAR_RATIO 270.0f
-#define FLORA_WHEEL_DIAMETER_MM 130.0f
+#define FLORA_GEAR_RATIO 270.0f /**< potwierdzone przy zakupie silnikow 27.10.2026 */
+
+/**
+ * SKUTECZNA srednica kola, nie nominalna.
+ *
+ * Kola maja nominalnie 130 mm, ale pod ciezarem robota guma sie ugina
+ * i promien toczny jest mniejszy.
+ *
+ * Zmierzone 27.10.2026 na podlodze, trzy przejazdy po 5 s na 40% mocy:
+ *   linijka:    427,5 / 432,5 / 430,0 mm   (srednia 430,0, rozrzut 0,6%)
+ *   odometria:  452 / 450 mm przy 130 mm   (srednia 450,5)
+ *   wspolczynnik 450,5 / 430,0 = 1,048  ->  130 / 1,048 = 124 mm
+ *
+ * Pierwsza wersja miala 123 mm, policzone z samego pierwszego przejazdu -
+ * a ten poszedl lukiem (8,2% roznicy miedzy kolami), wiec linijka mierzyla
+ * cieciwe zamiast luku i zanizala droge. Trzy przejazdy razem daja 124 mm.
+ *
+ * DLACZEGO TUTAJ, A NIE W PRZELOZENIU: oba parametry wchodza do
+ * FLORA_MM_PER_COUNT tak samo, wiec matematycznie mozna bylo wpisac
+ * 285:1 i zostawic 130 mm. Ale 270:1 to fakt produkcyjny silnika,
+ * a promien toczny zalezy od obciazenia i podloza - i to on sie zmieni
+ * po wymianie kol albo po zjechaniu na trawe. Poprawka siedzi tam,
+ * gdzie lezy jej przyczyna.
+ *
+ * ================== WARTOSC TYMCZASOWA ==================
+ * Zmierzona na PLATFORNIE TESTOWEJ, nie na docelowym robocie. Promien
+ * toczny zalezy od obciazenia, a docelowo dojda: bateria LiFePO4 12 Ah,
+ * zbiornik 2-3 l wody, maszt z glowica, obudowa ASA. To spory ulamek
+ * masy, wiec guma ugnie sie mocniej i srednica bedzie MNIEJSZA niz 124.
+ *
+ * Dojdzie tez podloze: na trawie kolo zaglebia sie w darn.
+ *
+ * POWTORZ KALIBRACJE na zmontowanym robocie, na trawie, procedura
+ * bringup_drive_calibrate(): kilka przejazdow, pomiar linijka, srednia.
+ *
+ * SUBTELNOSC, O KTOREJ WARTO PAMIETAC: zbiornik oprozniasz sie w trakcie
+ * pracy, wiec masa robota maleje o 2-3 kg i skuteczna srednica rosnie
+ * w ciagu dnia. Odometria bedzie przez to dryfowac niezaleznie od
+ * jakosci kalibracji - to jeden z powodow, dla ktorych korekta pozycji
+ * znacznikami AprilTag nie jest dodatkiem, tylko koniecznoscia.
+ * ========================================================
+ */
+#define FLORA_WHEEL_DIAMETER_MM 124.0f
 
 #define FLORA_COUNTS_PER_WHEEL_REV \
     (FLORA_ENCODER_PPR * FLORA_ENCODER_QUAD_MULT * FLORA_GEAR_RATIO)

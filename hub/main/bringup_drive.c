@@ -35,10 +35,27 @@ static flora_ina226_handle_t s_ina;   /* przekazywany do bringup_drive_run */
 /* Liczniki sprawdzen sa definiowane nizej; tu deklaracja wyprzedzajaca. */
 static int s_checks_passed;
 static int s_checks_failed;
+static void check(bool ok, const char *what, const char *hint);
 
 /* Gdy true, zrodlo zliczen klamie o bezruchu - sluzy do sprawdzenia,
  * czy straznik utyku naprawde odcina silniki. */
-static bool s_fake_frozen;
+static bool  s_fake_frozen;
+/* Gdy dodatnie, zrodlo pradu klamie - sprawdza detektor pradowy bez
+ * faktycznego blokowania silnika. */
+static float s_fake_current;
+
+/** Zrodlo pradu dla straznika. NAN, gdy INA226 niedostepny. */
+static float bus_current(void *ctx)
+{
+    if (s_fake_current > 0.0f) {
+        return s_fake_current;
+    }
+    if (!s_ina) {
+        return NAN;
+    }
+    float a = 0.0f;
+    return flora_ina226_read_current(s_ina, &a) == ESP_OK ? a : NAN;
+}
 
 /** Zrodlo zliczen dla straznika utyku w flora_motors. */
 static int64_t encoder_counts(flora_motors_wheel_t wheel, void *ctx)
@@ -53,10 +70,15 @@ static int64_t encoder_counts(flora_motors_wheel_t wheel, void *ctx)
     return wheel == FLORA_MOTORS_WHEEL_LEFT ? s.left_counts : s.right_counts;
 }
 
-static void on_stall(flora_motors_wheel_t wheel, float power, void *ctx)
+static void on_stall(flora_motors_stall_reason_t reason, flora_motors_wheel_t wheel,
+                     float value, void *ctx)
 {
-    ESP_LOGE(TAG, ">>> straznik odcial naped: %s kolo, moc %.0f%%",
-             wheel == FLORA_MOTORS_WHEEL_LEFT ? "lewe" : "prawe", power);
+    if (reason == FLORA_MOTORS_STALL_OVERCURRENT) {
+        ESP_LOGE(TAG, ">>> straznik odcial naped: prad %.2f A", value);
+    } else {
+        ESP_LOGE(TAG, ">>> straznik odcial naped: %s kolo nie rusza przy %.0f%%",
+                 wheel == FLORA_MOTORS_WHEEL_LEFT ? "lewe" : "prawe", value);
+    }
 }
 
 /**
@@ -104,6 +126,64 @@ static void test_stall_guard(void)
         flora_motors_stop();
     }
     vTaskDelay(pdMS_TO_TICKS(400));
+}
+
+/**
+ * Sprawdza detektor pradowy, podajac mu falszywy odczyt ponad progiem.
+ *
+ * Alternatywa byloby fizyczne zablokowanie kola, czyli dokladnie to,
+ * przed czym detektor ma chronic - i co raz juz kosztowalo silnik.
+ * Oklamanie zrodla pomiaru sprawdza ta sama sciezke kodu bez ryzyka.
+ */
+static void test_current_guard(void)
+{
+    ESP_LOGI(TAG, "=== SPRAWDZENIE DETEKTORA PRADOWEGO ===");
+
+    if (!s_ina) {
+        ESP_LOGW(TAG, "  pominiete: INA226 niedostepny, detektor nieaktywny");
+        return;
+    }
+    if (flora_motors_is_stalled()) {
+        flora_motors_clear_stall();
+    }
+
+    s_fake_current = 5.0f;            /* znacznie ponad progiem 2,5 A */
+    int64_t t0 = esp_timer_get_time();
+    flora_motors_set(20.0f, 20.0f);
+
+    while (!flora_motors_is_stalled() && (esp_timer_get_time() - t0) < 2000000) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    int64_t elapsed_ms = (esp_timer_get_time() - t0) / 1000;
+    s_fake_current = 0.0f;
+
+    if (!flora_motors_is_stalled()) {
+        ESP_LOGE(TAG, "  [BLAD] detektor NIE odcial w ciagu 2 s");
+        s_checks_failed++;
+        flora_motors_stop();
+        return;
+    }
+
+    char what[80];
+    snprintf(what, sizeof(what), "odcieto po %" PRId64 " ms", elapsed_ms);
+    check(true, what, NULL);
+
+    /* Powod musi byc rozpoznany poprawnie - inaczej warstwa wyzej
+     * zareaguje na zla przyczyne. */
+    check(flora_motors_stall_reason() == FLORA_MOTORS_STALL_OVERCURRENT,
+          "powod rozpoznany jako przekroczenie pradu", NULL);
+
+    flora_motors_clear_stall();
+    vTaskDelay(pdMS_TO_TICKS(300));
+
+    /* Po skasowaniu blokady i powrocie pradu do normy naped musi znow
+     * przyjmowac moc - inaczej jeden skok pradu zablokowalby robota na stale. */
+    bool recovered = (flora_motors_set(15.0f, 15.0f) == ESP_OK);
+    flora_motors_stop();
+    check(recovered, "naped dziala po skasowaniu blokady",
+          "zatrzask nie puszcza mimo flora_motors_clear_stall()");
+
+    vTaskDelay(pdMS_TO_TICKS(300));
 }
 
 /* Moc uzywana w testach. 30% wystarczy, zeby kolo ruszylo bez obciazenia. */
@@ -423,31 +503,46 @@ static esp_err_t drive_hw_init(void)
      * kol w podwoziu sprawdzic przebieg "jazda prosto":
      *   jedzie w przod -> odwrocic invert w enc_cfg
      *   jedzie w tyl   -> odwrocic invert w motors_cfg */
-    /* UWAGA, OKABLOWANIE (ustalone pomiarem 2026-10-19):
-     * Wtyczki enkoderow sa wpiete ODWROTNIE niz zaklada pinout w
-     * flora_board.h - przy pracujacym LEWYM silniku liczyly wejscia
-     * GPIO17/18, a przy prawym GPIO15/16. Kompensujemy to tutaj.
+    /* OKABLOWANIE: wtyczki enkoderow sa wpiete ODWROTNIE wzgledem pinoutu.
+     * Zmierzone dwa razy, na dwoch roznych kompletach silnikow:
+     *   19.10.2026 (stare silniki) i 27.10.2026 (nowe) - za kazdym razem
+     *   lewy silnik kreci enkoderem na GPIO17/18, prawy na GPIO15/16.
+     * Powtarzalnosc wskazuje, ze tak jest zrobiona wiazka, a nie ze ktos
+     * raz pomylil wtyczki. Kompensujemy w kodzie.
      *
-     * Docelowo lepiej przepiac wtyczki na plytce i przywrocic naturalne
-     * mapowanie (L -> ENC_L, P -> ENC_R), zeby kod zgadzal sie z
-     * dokumentacja projektu. */
+     * Jesli kiedys przepniesz wiazke na zgodna z pinoutem, zdejmij to
+     * mapowanie - diagnostyka zbocz powie, czy nadal jest potrzebne. */
     flora_encoders_cfg_t enc_cfg = FLORA_ENCODERS_DEFAULT_CFG();
+    /* Znak lewego enkodera ustalony obserwacja 27.10.2026: robot jechal
+     * prosto, a enkodery pokazywaly przeciwne znaki - czyli silniki byly
+     * zgodne, a mylil sie sam odczyt. */
     enc_cfg.left  = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_R_A,   /* zamienione */
                                            .b_gpio = FLORA_PIN_ENC_R_B,
-                                           .invert = false };
+                                           .invert = true };
     enc_cfg.right = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_L_A,   /* zamienione */
                                            .b_gpio = FLORA_PIN_ENC_L_B,
                                            .invert = true };
     enc_cfg.mm_per_count = FLORA_MM_PER_COUNT;
     ESP_RETURN_ON_ERROR(flora_encoders_init(&enc_cfg), TAG, "enkodery");
 
-    /* Straznik utyku - po stracie prawego silnika 19.10.2026 jest to
-     * zabezpieczenie obowiazkowe, nie dodatek. */
-    flora_motors_stall_cfg_t guard = FLORA_MOTORS_STALL_DEFAULT_CFG();
-    guard.counts_cb = encoder_counts;
-    guard.on_stall  = on_stall;
-    ESP_RETURN_ON_ERROR(flora_motors_stall_guard_enable(&guard), TAG, "straznik utyku");
+    /* Straznika utyku NIE wlaczamy tutaj. Powod wyszedl w tescie 27.10.2026:
+     * zle podlaczony enkoder wyglada dla straznika dokladnie jak utyk, wiec
+     * zatrzaskiwal blokade w trakcie diagnostyki i zabijal reszte testu -
+     * a diagnostyka istnieje wlasnie po to, by dzialac przy zlym okablowaniu.
+     * Wlaczamy go dopiero, gdy mapowanie enkoderow jest potwierdzone. */
     return ESP_OK;
+}
+
+/** Wlacza straznika utyku. Wolane po diagnostyce, nie przed. */
+static esp_err_t enable_stall_guard(void)
+{
+    flora_motors_stall_cfg_t guard = FLORA_MOTORS_STALL_DEFAULT_CFG();
+    guard.counts_cb  = encoder_counts;
+    guard.on_stall   = on_stall;
+    /* Drugi, niezalezny detektor. Dziala tylko, gdy INA226 odpowiada -
+     * przy jego braku zostaje sam detektor enkoderowy. */
+    guard.current_cb = s_ina ? bus_current : NULL;
+    return flora_motors_stall_guard_enable(&guard);
 }
 
 /**
@@ -533,6 +628,91 @@ static void direction_verdict(void)
     }
 }
 
+/**
+ * Sama kalibracja przelozenia, bez reszty testow.
+ *
+ * Przejazd jest DLUZSZY niz w pelnym tescie i to celowo: blad pomiaru
+ * linijka (jakies +-2 mm) jest staly, wiec im dluzsza droga, tym mniejszy
+ * jego udzial. Przy 127 mm dwa milimetry to 1,6% bledu przelozenia,
+ * przy 500 mm juz tylko 0,4%.
+ */
+void bringup_drive_calibrate(flora_ina226_handle_t ina, int runs)
+{
+    s_ina = ina;
+    if (drive_hw_init() != ESP_OK) {
+        ESP_LOGE(TAG, "nie udalo sie zainicjalizowac napedu");
+        return;
+    }
+    ESP_ERROR_CHECK(enable_stall_guard());
+
+    const uint32_t drive_ms = 5000;
+    const float    power    = 40.0f;
+
+    ESP_LOGW(TAG, "========================================================");
+    ESP_LOGW(TAG, " KALIBRACJA PRZELOZENIA");
+    ESP_LOGW(TAG, " Robot pojedzie prosto przez %" PRIu32 " ms, %d razy.", drive_ms, runs);
+    ESP_LOGW(TAG, " Potrzeba okolo metra wolnej przestrzeni na kazdy przejazd.");
+    ESP_LOGW(TAG, "========================================================");
+
+    for (int run = 1; run <= runs; run++) {
+        ESP_LOGW(TAG, "--- przejazd %d z %d ---", run, runs);
+        ESP_LOGW(TAG, "  ZAZNACZ pozycje robota. Start za 5 s.");
+        for (int i = 5; i > 0; i--) {
+            ESP_LOGW(TAG, "  %d...", i);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+
+        ESP_ERROR_CHECK(flora_encoders_reset());
+        flora_encoders_sample_t before, after;
+        ESP_ERROR_CHECK(flora_encoders_read(&before));
+
+        ESP_ERROR_CHECK(flora_motors_set(power, power));
+        vTaskDelay(pdMS_TO_TICKS(drive_ms));
+        ESP_ERROR_CHECK(flora_motors_stop());
+
+        /* Chwila na wybieg - bez tej przerwy policzymy mniej, niz robot
+         * naprawde przejechal, i przelozenie wyjdzie zawyzone. */
+        vTaskDelay(pdMS_TO_TICKS(800));
+        ESP_ERROR_CHECK(flora_encoders_read(&after));
+
+        float dl  = fabsf(after.left_mm  - before.left_mm);
+        float dr  = fabsf(after.right_mm - before.right_mm);
+        float avg = (dl + dr) / 2.0f;
+
+        ESP_LOGI(TAG, "  odometria: lewe %.0f mm, prawe %.0f mm, SREDNIO %.0f mm", dl, dr, avg);
+        if (avg > 0.0f) {
+            float skew = 100.0f * fabsf(dl - dr) / avg;
+            ESP_LOGI(TAG, "  roznica miedzy kolami: %.1f%%", skew);
+            if (skew > 10.0f) {
+                ESP_LOGW(TAG, "  ponad 10%% - kolo buksuje albo robot jedzie lukiem;");
+                ESP_LOGW(TAG, "  taki przejazd slabo nadaje sie do kalibracji");
+            }
+        }
+
+        /* Tabelka zamiast samego wzoru - przy pomiarze linijka wygodniej
+         * odczytac gotowa wartosc, niz liczyc w pamieci. */
+        ESP_LOGI(TAG, "  ZMIERZ LINIJKA faktyczna droge i odczytaj przelozenie:");
+        ESP_LOGI(TAG, "    zmierzone      przelozenie");
+        for (int pct = 70; pct <= 130; pct += 10) {
+            float measured = avg * (float)pct / 100.0f;
+            ESP_LOGI(TAG, "    %6.0f mm       %.0f:1",
+                     measured, (double)(FLORA_GEAR_RATIO * avg / measured));
+        }
+        ESP_LOGI(TAG, "  (teraz przyjete %.0f:1, %.4f mm na zliczenie)",
+                 (double)FLORA_GEAR_RATIO, (double)FLORA_MM_PER_COUNT);
+
+        if (run < runs) {
+            ESP_LOGW(TAG, "  ustaw robota na nastepny przejazd");
+            vTaskDelay(pdMS_TO_TICKS(8000));
+        }
+    }
+
+    ESP_LOGI(TAG, "========================================================");
+    ESP_LOGI(TAG, " Usrednij wyniki z przejazdow i wpisz do FLORA_GEAR_RATIO");
+    ESP_LOGI(TAG, " w components/flora_board/include/flora_board.h");
+    ESP_LOGI(TAG, "========================================================");
+}
+
 void bringup_drive_run(flora_ina226_handle_t ina)
 {
     s_ina = ina;
@@ -554,11 +734,19 @@ void bringup_drive_run(flora_ina226_handle_t ina)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
+    /* Samotest straznika wymaga go wlaczonego, wiec wlaczamy, sprawdzamy
+     * i wylaczamy na czas diagnostyki. */
+    ESP_ERROR_CHECK(enable_stall_guard());
     test_stall_guard();
+    test_current_guard();
+    ESP_ERROR_CHECK(flora_motors_stall_guard_disable());
 
     ESP_ERROR_CHECK(flora_encoders_reset());
     diag_encoders();
     ESP_ERROR_CHECK(flora_encoders_reset());
+
+    /* Mapowanie enkoderow juz znane - od tego miejsca straznik chroni. */
+    ESP_ERROR_CHECK(enable_stall_guard());
 
     run_leg("lewe kolo w przod",  TEST_POWER, 0.0f, +1, 0);
     run_leg("lewe kolo w tyl",   -TEST_POWER, 0.0f, -1, 0);
