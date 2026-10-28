@@ -8,5 +8,8 @@ managed_components/
 # z rejestru (ds18b20, onewire_bus), zeby build byl powtarzalny na innej
 # maszynie i za pol roku. Tak Espressif zaleca dla aplikacji.
 .vscode/
+# Lokalna historia VS Code - kopie plikow przy kazdym zapisie,
+# nie naleza do repozytorium.
+.history/
 .idea/
 .DS_Store

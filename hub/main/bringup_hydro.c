@@ -23,12 +23,14 @@
 #include "flora_ina226.h"
 #include "flora_pump.h"
 #include "flora_temp.h"
+#include "flora_level.h"
 
 static const char *TAG = "hydro";
 
 static flora_ina226_handle_t s_ina;
 static bool s_temp_ready;
 static bool s_pump_ready;
+static flora_level_handle_t s_level;
 
 /* --- Limity pompki na czas testu ---
  * Znacznie ciasniejsze niz docelowe (30 s / 60 s / 10 min), zeby przy braku
@@ -140,13 +142,33 @@ static void test_pump(void)
 {
     ESP_LOGI(TAG, "=== POMPKA ===");
 
+    /* Czujnik poziomu przez flora_level, nie przez wbudowana kontrole GPIO
+     * w flora_pump. Powod: w jadacym robocie woda chlupie i surowy odczyt
+     * pinu przelaczalby sie kilka razy na sekunde. flora_level probkuje
+     * i uspokaja, wiec pompka dostaje stan stabilny. */
+    flora_level_cfg_t lvl = FLORA_LEVEL_DEFAULT_CFG();
+    lvl.gpio = FLORA_PIN_WATER_LEVEL;
+    bool have_level = (flora_level_init(&lvl, &s_level) == ESP_OK);
+    if (have_level) {
+        ESP_LOGI(TAG, "  czujnik poziomu: surowo %s, po uspokojeniu %s",
+                 flora_level_raw(s_level) ? "woda" : "sucho",
+                 flora_level_water_present(s_level) ? "woda" : "sucho");
+        ESP_LOGW(TAG, "  SPRAWDZ POLARYZACJE: zanurz czujnik i potwierdz, ze surowy");
+        ESP_LOGW(TAG, "  odczyt zmienia sie na \"woda\". XKC-Y25 bywa NPN albo PNP,");
+        ESP_LOGW(TAG, "  a zla flaga oznacza pompke na sucho przy pustym zbiorniku.");
+    } else {
+        ESP_LOGW(TAG, "  czujnik poziomu niedostepny - brak ochrony przed sucho");
+    }
+
     flora_pump_cfg_t cfg = FLORA_PUMP_DEFAULT_CFG();
     cfg.pump_gpio = FLORA_PIN_PUMP;
-    /* Czujnik poziomu niepodlaczony. GPIO_NUM_NC wylacza kontrole calkowicie -
-     * wpiecie tu GPIO10 bylo by gorsze niz jej brak, bo pin wiszacy w
-     * powietrzu daje losowe stany i pompka ruszalaby albo blokowala sie
-     * przypadkowo. */
+    /* Wbudowana kontrola po GPIO zostaje wylaczona - stan dostarcza
+     * flora_level przez callback, juz uspokojony. */
     cfg.level_gpio       = GPIO_NUM_NC;
+    if (have_level) {
+        cfg.water_cb  = flora_level_pump_cb;
+        cfg.water_ctx = s_level;
+    }
     cfg.max_run_ms       = TEST_PUMP_MAX_RUN_MS;
     cfg.min_interval_ms  = TEST_PUMP_INTERVAL_MS;
     cfg.daily_limit_ms   = TEST_PUMP_DAILY_MS;
@@ -160,8 +182,11 @@ static void test_pump(void)
     s_pump_ready = true;
 
     ESP_LOGW(TAG, "  ----------------------------------------------");
-    ESP_LOGW(TAG, "  BRAK CZUJNIKA POZIOMU - zero ochrony przed sucho");
-    ESP_LOGW(TAG, "  Upewnij sie, ze jest woda albo odlacz pompke.");
+    if (flora_pump_water_available()) {
+        ESP_LOGW(TAG, "  Czujnik zglasza wode. Pompka ruszy.");
+    } else {
+        ESP_LOGW(TAG, "  Czujnik NIE zglasza wody - dozowanie zostanie odmowione.");
+    }
     ESP_LOGW(TAG, "  Start za 5 s, lacznie popracuje okolo 3 s.");
     ESP_LOGW(TAG, "  ----------------------------------------------");
     for (int i = 5; i > 0; i--) {
