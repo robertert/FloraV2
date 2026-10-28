@@ -22,6 +22,7 @@
 #pragma once
 
 #include "driver/gpio.h"
+#include "driver/uart.h"
 
 /* ---- Magistrala I2C czujnikow glowicy ---- */
 #define FLORA_HEAD_I2C_SDA      GPIO_NUM_21   /**< TODO potwierdzic na plytce */
@@ -31,6 +32,19 @@
 /* ---- UART w dol masztu (do bryly) ---- */
 #define FLORA_HEAD_UART_TX      GPIO_NUM_42   /**< TODO potwierdzic */
 #define FLORA_HEAD_UART_RX      GPIO_NUM_41   /**< TODO potwierdzic */
+#define FLORA_HEAD_UART_PORT    UART_NUM_1
+
+/* ---- UART w gore (do modulu kamery znacznikow) ----
+ * Glowica prowadzi DWA lacza. Modul znacznikow nie ma wlasnego kabla
+ * w dol - jest tylko jeden - wiec gada z glowica, a ta przekazuje jego
+ * ramki do bryly.
+ *
+ * Odcinek jest krotki, w obrebie masztu, wiec zaklocenia sa mniejszym
+ * problemem niz na dlugim kablu i mozna tu isc szybciej niz 57600.
+ */
+#define FLORA_HEAD_CAM_TX       GPIO_NUM_38   /**< TODO potwierdzic */
+#define FLORA_HEAD_CAM_RX       GPIO_NUM_39   /**< TODO potwierdzic */
+#define FLORA_HEAD_CAM_PORT     UART_NUM_2
 
 /* ---- Czujnik deszczu ---- */
 #define FLORA_HEAD_RAIN         GPIO_NUM_2    /**< TODO potwierdzic */

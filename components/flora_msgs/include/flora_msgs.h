@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 /** Wersja kontraktu. Podbij przy zmianie ukladu ktorejkolwiek struktury. */
-#define FLORA_MSGS_VERSION 2
+#define FLORA_MSGS_VERSION 3
 
 /** Typy wiadomosci. Wartosci jawne, bo ida po kablu. */
 typedef enum {
@@ -46,6 +46,14 @@ typedef enum {
     FLORA_MSG_SUN         = 0x12,  /**< flora_sun_t, 1 Hz */
     FLORA_MSG_WEATHER     = 0x13,  /**< flora_weather_t, 0,1 Hz */
     FLORA_MSG_HEAD_STATUS = 0x14,  /**< flora_head_status_t, 0,2 Hz */
+    FLORA_MSG_OBSTACLES   = 0x15,  /**< flora_obstacles_t, kamera przednia glowicy */
+
+    /* --- modul kamery znacznikow -> bryla (przez glowice) ---
+     * Typy sa globalnie unikalne w calym systemie, wiec glowica przekazuje
+     * te ramki w dol bez zadnego pola adresu - bryla rozpoznaje nadawce
+     * po samym typie wiadomosci. */
+    FLORA_MSG_TAGS        = 0x30,  /**< flora_tags_t */
+    FLORA_MSG_CAM_STATUS  = 0x31,  /**< flora_cam_status_t */
 
     /* --- bryla -> glowica --- */
     FLORA_MSG_CMD         = 0x20,  /**< flora_cmd_t, wymaga potwierdzenia */
@@ -136,6 +144,71 @@ typedef struct __attribute__((packed)) {
     uint16_t error_count;
 } flora_head_status_t;
 
+/**
+ * Przeszkody widziane przez kamere przednia glowicy.
+ *
+ * Pole widzenia podzielone na sektory, w kazdym odleglosc do najblizszej
+ * przeszkody. Taki zapis laczy sie wprost z ultradzwiekami, ktore juz sa
+ * w bryle, i wystarcza do omijania - w przeciwienstwie do samej flagi
+ * "wolno / zablokowane".
+ *
+ * ZNACZENIE WARTOSCI W SEKTORZE:
+ *   0        nieznane - kamera nie potrafila ocenic (cien, przeswietlenie)
+ *   1..253   odleglosc w centymetrach
+ *   254      wolne do konca zasiegu
+ *   255      zarezerwowane
+ * Zero i 254 to NIE to samo: pierwsze znaczy "nie wiem", drugie "czysto".
+ * Mylenie ich przy omijaniu konczy sie wjechaniem w przeszkode, ktorej
+ * kamera nie rozpoznala.
+ */
+#define FLORA_OBSTACLE_SECTORS 16
+#define FLORA_OBSTACLE_UNKNOWN 0
+#define FLORA_OBSTACLE_CLEAR   254
+
+typedef struct __attribute__((packed)) {
+    uint32_t timestamp_us;
+    uint16_t fov_cdeg;       /**< szerokosc pola widzenia, centystopnie */
+    uint8_t  sectors[FLORA_OBSTACLE_SECTORS];  /**< od lewej do prawej */
+    uint8_t  valid;          /**< 0 gdy caly obraz bezuzyteczny */
+    uint8_t  _pad;
+} flora_obstacles_t;
+
+/* ================= MODUL ZNACZNIKOW -> BRYLA ================= */
+
+/** Ile znacznikow miesci sie w jednej ramce. */
+#define FLORA_TAGS_MAX 4
+
+/**
+ * Pojedyncza detekcja znacznika AprilTag.
+ *
+ * Wysylamy SUROWE POMIARY, nie wyliczona pozycje robota: filtr Kalmana na
+ * dole sam wazy kazda detekcje wedlug `quality` i odleglosci, a modul
+ * kamery nie musi znac mapy palikow. Wyliczanie pozycji w module
+ * odebraloby filtrowi informacje o niepewnosci.
+ */
+typedef struct __attribute__((packed)) {
+    uint16_t id;             /**< identyfikator znacznika */
+    uint16_t distance_mm;    /**< odleglosc do znacznika */
+    int16_t  bearing_cdeg;   /**< kat wzgledem osi kamery, centystopnie */
+    uint8_t  quality;        /**< 0..100, pewnosc detekcji */
+    uint8_t  _pad;
+} flora_tag_t;
+
+typedef struct __attribute__((packed)) {
+    uint32_t    timestamp_us;  /**< zegar MODULU KAMERY, nie bryly */
+    uint8_t     count;         /**< ile pozycji w tags[] jest wypelnionych */
+    uint8_t     _pad[3];
+    flora_tag_t tags[FLORA_TAGS_MAX];
+} flora_tags_t;
+
+typedef struct __attribute__((packed)) {
+    uint32_t uptime_ms;
+    uint16_t frames_processed; /**< klatek od ostatniego raportu */
+    uint16_t error_count;
+    uint8_t  camera_ok;
+    uint8_t  _pad[3];
+} flora_cam_status_t;
+
 /* ================= BRYLA -> GLOWICA ================= */
 
 typedef enum {
@@ -169,6 +242,10 @@ _Static_assert(sizeof(flora_weather_t)     == 16, "flora_weather_t: podbij FLORA
 _Static_assert(sizeof(flora_head_status_t) ==  8, "flora_head_status_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_cmd_t)         ==  6, "flora_cmd_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_time_sync_t)   ==  4, "flora_time_sync_t: podbij FLORA_MSGS_VERSION");
+_Static_assert(sizeof(flora_obstacles_t)   == 24, "flora_obstacles_t: podbij FLORA_MSGS_VERSION");
+_Static_assert(sizeof(flora_tag_t)         ==  8, "flora_tag_t: podbij FLORA_MSGS_VERSION");
+_Static_assert(sizeof(flora_tags_t)        == 40, "flora_tags_t: podbij FLORA_MSGS_VERSION");
+_Static_assert(sizeof(flora_cam_status_t)  == 12, "flora_cam_status_t: podbij FLORA_MSGS_VERSION");
 
 /**
  * @brief Oczekiwany rozmiar payloadu dla typu wiadomosci.
@@ -192,6 +269,9 @@ static inline int flora_msgs_payload_size(uint8_t type)
         case FLORA_MSG_HEAD_STATUS: return (int)sizeof(flora_head_status_t);
         case FLORA_MSG_CMD:         return (int)sizeof(flora_cmd_t);
         case FLORA_MSG_TIME_SYNC:   return (int)sizeof(flora_time_sync_t);
+        case FLORA_MSG_OBSTACLES:   return (int)sizeof(flora_obstacles_t);
+        case FLORA_MSG_TAGS:        return (int)sizeof(flora_tags_t);
+        case FLORA_MSG_CAM_STATUS:  return (int)sizeof(flora_cam_status_t);
         default:                    return -1;
     }
 }

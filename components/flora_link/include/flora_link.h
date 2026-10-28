@@ -41,6 +41,15 @@ extern "C" {
 #define FLORA_LINK_MAX_HANDLERS 16
 
 /**
+ * Uchwyt jednego lacza.
+ *
+ * Komponent obsluguje WIELE lacz naraz - glowica masztu prowadzi dwa:
+ * jedno w gore do modulu kamery znacznikow, drugie w dol do bryly.
+ * Kazde ma wlasny port UART, wlasny parser i wlasne liczniki.
+ */
+typedef struct flora_link_s *flora_link_handle_t;
+
+/**
  * Handler wiadomosci. Wolany z zadania odbiorczego, wiec moze logowac
  * i wolac API - ale musi byc KROTKI, bo blokuje odbior kolejnych ramek.
  * Ciezka prace oddaj do wlasnego zadania przez kolejke.
@@ -56,6 +65,9 @@ typedef void (*flora_link_state_cb_t)(bool up, void *ctx);
 typedef void (*flora_link_version_cb_t)(uint8_t got, uint8_t expected, void *ctx);
 
 typedef struct {
+    /** Krotka nazwa do logow, np. "dol" albo "gora". Rozroznia lacza. */
+    const char *name;
+
     uart_port_t port;
     int         tx_gpio;
     int         rx_gpio;
@@ -136,11 +148,12 @@ typedef struct {
     uint32_t bytes_rx;
 } flora_link_stats_t;
 
-esp_err_t flora_link_init(const flora_link_cfg_t *cfg);
-esp_err_t flora_link_deinit(void);
+esp_err_t flora_link_init(const flora_link_cfg_t *cfg, flora_link_handle_t *out);
+esp_err_t flora_link_deinit(flora_link_handle_t h);
 
 /** Wysyla bez potwierdzania. Do telemetrii. */
-esp_err_t flora_link_send(uint8_t type, const void *payload, uint8_t len);
+esp_err_t flora_link_send(flora_link_handle_t h, uint8_t type,
+                          const void *payload, uint8_t len);
 
 /**
  * @brief Wysyla z potwierdzeniem i ponawianiem. Blokuje.
@@ -152,7 +165,8 @@ esp_err_t flora_link_send(uint8_t type, const void *payload, uint8_t len);
  * @return ESP_ERR_TIMEOUT gdy wyczerpano ponowienia,
  *         ESP_ERR_INVALID_STATE gdy polaczenie zerwano w trakcie
  */
-esp_err_t flora_link_send_reliable(uint8_t type, const void *payload, uint8_t len,
+esp_err_t flora_link_send_reliable(flora_link_handle_t h, uint8_t type,
+                                   const void *payload, uint8_t len,
                                    uint32_t acquire_timeout_ms);
 
 /**
@@ -163,13 +177,37 @@ esp_err_t flora_link_send_reliable(uint8_t type, const void *payload, uint8_t le
  * Komponent celowo nic nie wie o tym kluczu; to aplikacja wie, kiedy
  * zamierza wylaczyc druga strone.
  */
-esp_err_t flora_link_abort_pending(void);
+esp_err_t flora_link_abort_pending(flora_link_handle_t h);
 
-esp_err_t flora_link_on(uint8_t type, flora_link_msg_cb_t cb, void *ctx);
+esp_err_t flora_link_on(flora_link_handle_t h, uint8_t type,
+                        flora_link_msg_cb_t cb, void *ctx);
 
-bool flora_link_is_up(void);
-void flora_link_get_stats(flora_link_stats_t *out);
-void flora_link_reset_stats(void);
+/**
+ * @brief Przekazuje wiadomosci danego typu z jednego lacza na drugie.
+ *
+ * Potrzebne w glowicy masztu: modul kamery znacznikow nie ma wlasnego kabla
+ * w dol, wiec gada z glowica, a ta przekazuje jego ramki do bryly.
+ *
+ * Dziala bez pola adresu w ramce, bo typy wiadomosci sa globalnie unikalne -
+ * bryla rozpoznaje nadawce po samym typie.
+ *
+ * OGRANICZENIE, O KTORYM TRZEBA WIEDZIEC: przekazywane sa tylko wiadomosci
+ * BEZ POTWIERDZANIA. Komenda z ACK przekazana w ten sposob bylaby
+ * potwierdzona przez glowice, a nie przez adresata - nadawca dostalby
+ * falszywe zapewnienie, ze dotarla na miejsce. Jesli bryla ma kiedys
+ * wysylac komendy do modulu kamery, trzeba to zrobic jawnie: wlasny typ
+ * wiadomosci, ktory glowica odbiera, wykonuje jako wlasna komende i dopiero
+ * wtedy sama wysyla dalej z osobnym potwierdzeniem.
+ *
+ * @param from lacze, z ktorego odbieramy
+ * @param to   lacze, na ktore przekazujemy
+ * @param type typ wiadomosci do przekazywania
+ */
+esp_err_t flora_link_relay(flora_link_handle_t from, flora_link_handle_t to, uint8_t type);
+
+bool flora_link_is_up(flora_link_handle_t h);
+void flora_link_get_stats(flora_link_handle_t h, flora_link_stats_t *out);
+void flora_link_reset_stats(flora_link_handle_t h);
 
 /**
  * @brief Zwiera nadawanie z odbiorem wewnatrz ukladu.
@@ -177,7 +215,7 @@ void flora_link_reset_stats(void);
  * Pozwala przejsc caly tor - ramkowanie, CRC, potwierdzanie, ponawianie -
  * na jednej plytce, bez drugiej strony i bez kabla.
  */
-esp_err_t flora_link_set_loopback(bool enable);
+esp_err_t flora_link_set_loopback(flora_link_handle_t h, bool enable);
 
 #ifdef __cplusplus
 }

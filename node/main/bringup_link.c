@@ -64,18 +64,20 @@ void bringup_link_loopback(void)
     cfg.proto_version = FLORA_MSGS_VERSION;
     cfg.size_of       = flora_msgs_payload_size;
     cfg.ack_type      = FLORA_MSG_ACK;
+    cfg.name          = "petla";
     cfg.on_state      = on_link_state;
 
-    if (flora_link_init(&cfg) != ESP_OK) {
+    flora_link_handle_t link = NULL;
+    if (flora_link_init(&cfg, &link) != ESP_OK) {
         ESP_LOGE(TAG, "  inicjalizacja nie powiodla sie");
         return;
     }
-    flora_link_on(FLORA_MSG_ATTITUDE, on_attitude, NULL);
-    flora_link_on(FLORA_MSG_CMD, on_cmd, NULL);
+    flora_link_on(link, FLORA_MSG_ATTITUDE, on_attitude, NULL);
+    flora_link_on(link, FLORA_MSG_CMD, on_cmd, NULL);
 
-    if (flora_link_set_loopback(true) != ESP_OK) {
+    if (flora_link_set_loopback(link, true) != ESP_OK) {
         ESP_LOGE(TAG, "  nie udalo sie zewrzec petli zwrotnej");
-        flora_link_deinit();
+        flora_link_deinit(link);
         return;
     }
     ESP_LOGI(TAG, "  petla zwrotna zwarta, nadawanie wraca do odbioru");
@@ -91,7 +93,7 @@ void bringup_link_loopback(void)
             .quality      = 90,
             .flags        = FLORA_ATT_HEADING_VALID,
         };
-        flora_link_send(FLORA_MSG_ATTITUDE, &a, sizeof a);
+        flora_link_send(link, FLORA_MSG_ATTITUDE, &a, sizeof a);
         vTaskDelay(pdMS_TO_TICKS(10));
     }
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -101,14 +103,14 @@ void bringup_link_loopback(void)
     check(s_attitude_seen == N, what);
     check(s_last_attitude.heading_cdeg == (uint16_t)((N - 1) * 1000),
           "payload ostatniej ramki zgadza sie co do bitu");
-    check(flora_link_is_up(), "polaczenie zglaszane jako nawiazane");
+    check(flora_link_is_up(link), "polaczenie zglaszane jako nawiazane");
 
     /* 2. Komenda z potwierdzeniem. W petli zwrotnej wlasna ramka wraca,
      *    zostaje automatycznie potwierdzona, a potwierdzenie wraca do nas. */
     s_cmd_seen = 0;
     flora_cmd_t cmd = { .code = FLORA_CMD_SET_ATT_HZ, .arg = 20 };
     int64_t t0 = esp_timer_get_time();
-    esp_err_t r = flora_link_send_reliable(FLORA_MSG_CMD, &cmd, sizeof cmd, 500);
+    esp_err_t r = flora_link_send_reliable(link, FLORA_MSG_CMD, &cmd, sizeof cmd, 500);
     int64_t dt_ms = (esp_timer_get_time() - t0) / 1000;
 
     snprintf(what, sizeof(what), "komenda potwierdzona w %" PRId64 " ms", dt_ms);
@@ -117,7 +119,7 @@ void bringup_link_loopback(void)
 
     /* 3. Statystyki musza sie domykac. */
     flora_link_stats_t st;
-    flora_link_get_stats(&st);
+    flora_link_get_stats(link, &st);
     ESP_LOGI(TAG, "  ramki: %" PRIu32 " odebrane, %" PRIu32 " wyslane",
              st.frames_ok, st.frames_sent);
     ESP_LOGI(TAG, "  potwierdzenia: %" PRIu32 " wyslane, %" PRIu32 " odebrane",
@@ -143,6 +145,6 @@ void bringup_link_loopback(void)
     }
     ESP_LOGI(TAG, "  ----------------------------------------");
 
-    flora_link_set_loopback(false);
-    flora_link_deinit();
+    flora_link_set_loopback(link, false);
+    flora_link_deinit(link);
 }

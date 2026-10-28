@@ -2,7 +2,7 @@
 #
 # Wrapper na idf.py: sam wciaga srodowisko ESP-IDF i wykrywa port szeregowy.
 #
-# Uzycie:  ./dev.sh <node|hub> <komenda> [dodatkowe argumenty do idf.py]
+# Uzycie:  ./dev.sh <node|hub|tagcam> <komenda> [dodatkowe argumenty do idf.py]
 # Pomoc:   ./dev.sh help
 #
 # Zmienne srodowiskowe:
@@ -127,11 +127,12 @@ port_args() {
 
 usage() {
 	cat <<'EOF'
-Uzycie: ./dev.sh <node|hub> <komenda> [argumenty do idf.py]
+Uzycie: ./dev.sh <node|hub|tagcam> <komenda> [argumenty do idf.py]
 
 Jednostki:
-  node          glowica masztu
-  hub           bryla (naped, zasilanie, podlewanie)
+  hub           bryla (naped, zasilanie, podlewanie, siec)
+  node          glowica masztu (czujniki, kamera przednia, przekazywanie)
+  tagcam        modul kamery znacznikow (w maszcie, nad glowica)
 
 Komendy:
   build         zbuduj projekt
@@ -179,7 +180,7 @@ esac
 
 target="${1:-}"
 case "$target" in
-	node | hub)
+	node | hub | tagcam)
 		PROJECT_DIR="$REPO_DIR/$target"
 		;;
 	"")
@@ -188,7 +189,7 @@ case "$target" in
 		;;
 	*)
 		die "Nieznana jednostka: $target
-Dostepne: node, hub. Uzycie: $0 <node|hub> <komenda>"
+Dostepne: node, hub, tagcam. Uzycie: $0 <node|hub|tagcam> <komenda>"
 		;;
 esac
 shift
