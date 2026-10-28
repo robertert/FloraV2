@@ -1,1 +1,11 @@
 CONFIG_IDF_TARGET="esp32s3"
+
+# Plytki maja uklad N16R8, czyli 16 MB flasha. Bez tego bootloader zglasza
+# przy kazdym starcie, ze wykryty rozmiar jest wiekszy niz w naglowku obrazu,
+# i uzywa mniejszego - czyli marnuje 14 MB.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# Domyslna partycja aplikacji ma 1 MB i przy samym stosie sieciowym
+# (lwIP, supplicant, mbedTLS) zostaje z niej 10% wolnego. Po dolozeniu BLE
+# albo kamery zabraklo by miejsca. Ten uklad daje 1500 kB.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y

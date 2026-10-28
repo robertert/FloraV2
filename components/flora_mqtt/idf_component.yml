@@ -1,0 +1,4 @@
+dependencies:
+  # ESP-MQTT zostal wyniesiony z ESP-IDF w wersji 6.0 do osobnego repozytorium
+  # i jest dostarczany przez rejestr komponentow. Naglowek i API zostaly te same.
+  espressif/mqtt: "^1.0.0"

@@ -75,8 +75,8 @@
  * siegac realnie 60-80%, i to jest poprawne - to skala wzgledna, a nie
  * objetosciowa zawartosc wody.
  */
-#define FLORA_SOIL_RAW_DRY  3340   /**< w powietrzu */
-#define FLORA_SOIL_RAW_WET  1125   /**< zanurzony w wodzie (zmierzone 1120-1130) */
+#define FLORA_SOIL_RAW_DRY 3340 /**< w powietrzu */
+#define FLORA_SOIL_RAW_WET 1125 /**< zanurzony w wodzie (zmierzone 1120-1130) */
 
 /* ---- Klucze w NVS ----
  * Nazwy sa po angielsku, jak reszta identyfikatorow, i trzymane obok
@@ -86,18 +86,38 @@
  *
  * Limit NVS to 15 znakow na klucz i na nazwe przestrzeni.
  */
-#define FLORA_NVS_NS_CALIB     "calib"
-#define FLORA_NVS_SOIL_DRY     "soil_dry"
-#define FLORA_NVS_SOIL_WET     "soil_wet"
-#define FLORA_NVS_GEAR_RATIO   "gear_ratio"
-#define FLORA_NVS_ENC_SWAPPED  "enc_swapped"
-#define FLORA_NVS_MOTOR_L_INV  "motor_l_inv"
-#define FLORA_NVS_MOTOR_R_INV  "motor_r_inv"
-#define FLORA_NVS_ENC_L_INV    "enc_l_inv"
-#define FLORA_NVS_ENC_R_INV    "enc_r_inv"
-#define FLORA_NVS_GYRO_BIAS_X  "gyro_bias_x"
-#define FLORA_NVS_GYRO_BIAS_Y  "gyro_bias_y"
-#define FLORA_NVS_GYRO_BIAS_Z  "gyro_bias_z"
+#define FLORA_NVS_NS_CALIB "calib"
+#define FLORA_NVS_SOIL_DRY "soil_dry"
+#define FLORA_NVS_SOIL_WET "soil_wet"
+#define FLORA_NVS_GEAR_RATIO "gear_ratio"
+#define FLORA_NVS_ENC_SWAPPED "enc_swapped"
+#define FLORA_NVS_MOTOR_L_INV "motor_l_inv"
+#define FLORA_NVS_MOTOR_R_INV "motor_r_inv"
+#define FLORA_NVS_ENC_L_INV "enc_l_inv"
+#define FLORA_NVS_ENC_R_INV "enc_r_inv"
+#define FLORA_NVS_GYRO_BIAS_X "gyro_bias_x"
+#define FLORA_NVS_GYRO_BIAS_Y "gyro_bias_y"
+#define FLORA_NVS_GYRO_BIAS_Z "gyro_bias_z"
+
+/* ---- Siec: WiFi i MQTT ----
+ * ================== DO UZUPELNIENIA ==================
+ * Na razie wpisane na sztywno. Sluza jako wartosci DOMYSLNE - aplikacja
+ * czyta je z NVS, wiec po pierwszym zapisaniu zmiana nie wymaga juz
+ * rekompilacji. Tym samym wzorcem co kalibracja gleby.
+ *
+ * Uwaga: te stale trafiaja do binarki jawnym tekstem. Przed oddaniem
+ * repozytorium na zewnatrz przenies je do NVS i wyczysc stad.
+ * =====================================================
+ */
+#define FLORA_WIFI_SSID_DEFAULT "iPhone Robert"
+#define FLORA_WIFI_PASS_DEFAULT "SWER1234"
+#define FLORA_MQTT_URI_DEFAULT "mqtt://192.168.1.10:1883"
+#define FLORA_MQTT_BASE_TOPIC "flora/robot1"
+
+#define FLORA_NVS_NS_NET "net"
+#define FLORA_NVS_WIFI_SSID "wifi_ssid"
+#define FLORA_NVS_WIFI_PASS "wifi_pass"
+#define FLORA_NVS_MQTT_URI "mqtt_uri"
 
 /* ---- Zasilanie ---- */
 #define FLORA_SHUNT_MILLIOHM 10.0f /**< INA226 z rezystorem R010 */
