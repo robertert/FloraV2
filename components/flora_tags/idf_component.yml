@@ -1,0 +1,5 @@
+dependencies:
+  # Port AprilTag na ESP-IDF. Komponent spolecznosciowy, nie od Espressifu -
+  # wymaga obejscia w CMakeLists projektu, bo nie buduje sie na GCC 15.
+  # Szczegoly w tagcam/CMakeLists.txt.
+  liux-pro/apriltag: "^0.0.4"

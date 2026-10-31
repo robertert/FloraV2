@@ -10,6 +10,30 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 0.2.0
+  espressif/esp32-camera:
+    component_hash: d1770097ec47996a9aba49b8d99672863c9855ea2d47e91fe31e11e58e8c7813
+    dependencies:
+    - name: espressif/esp_jpeg
+      registry_url: https://components.espressif.com
+      require: public
+      version: ^1.3.1
+    - name: idf
+      require: private
+      version: '>=5.1'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.1.8
+  espressif/esp_jpeg:
+    component_hash: defb83669293cbf86d0fa86b475ba5517aceed04ed70db435388c151ab37b5d7
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.3.1
   espressif/mqtt:
     component_hash: fb18bc3b65aa8c94693a9811ffc322cca8a65d92d5ec84983d3e385080e3969c
     dependencies:
@@ -34,9 +58,18 @@ dependencies:
     source:
       type: idf
     version: 6.1.0
+  liux-pro/apriltag:
+    component_hash: 6d80e23000a5b63043688d3e90f4856dc60e33c5321dac4325ae957661f57085
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.0.4
 direct_dependencies:
 - espressif/ds18b20
+- espressif/esp32-camera
 - espressif/mqtt
-manifest_hash: 3201706c699ad97a58c2384cce0da8ebd6a8880bc294b352cb191dd60f85b913
+- liux-pro/apriltag
+manifest_hash: d88fa7524a8633a6bf6c28f1a0d42adef0c5add69d3f749a981af7ebcf92f7aa
 target: esp32s3
 version: 3.0.0

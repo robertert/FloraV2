@@ -68,7 +68,7 @@ typedef enum {
 #define FLORA_SENSOR_BME280   (1u << 4)
 #define FLORA_SENSOR_IMU      (1u << 5)
 #define FLORA_SENSOR_MAG      (1u << 6)
-#define FLORA_SENSOR_RAIN     (1u << 7)
+#define FLORA_SENSOR_RAIN     (1u << 7)  /**< ZAREZERWOWANY - czujnika deszczu nie bedzie */
 
 /** Bity jakosci w ATTITUDE. */
 #define FLORA_ATT_HEADING_VALID  (1u << 0)
@@ -133,7 +133,10 @@ typedef struct __attribute__((packed)) {
     uint32_t pressure_pa;
     int16_t  temp_cc;        /**< temperatura, setne stopnia */
     uint16_t humidity_cpct;  /**< wilgotnosc, setne procenta */
-    uint8_t  rain;           /**< 0 sucho, 255 maksymalny sygnal */
+    /* ZAREZERWOWANE: czujnika deszczu nie bedzie, pole zostaje zerem.
+     * Nie usuwamy go, bo to podbicie FLORA_MSGS_VERSION i przeflashowanie
+     * obu stron za cene czterech bajtow w ramce raz na dziesiec sekund. */
+    uint8_t  rain;
     uint8_t  _pad[3];
 } flora_weather_t;
 

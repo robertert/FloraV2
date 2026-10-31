@@ -25,8 +25,8 @@
 #include "driver/uart.h"
 
 /* ---- Magistrala I2C czujnikow glowicy ---- */
-#define FLORA_HEAD_I2C_SDA      GPIO_NUM_21   /**< TODO potwierdzic na plytce */
-#define FLORA_HEAD_I2C_SCL      GPIO_NUM_47   /**< TODO potwierdzic na plytce */
+#define FLORA_HEAD_I2C_SDA      GPIO_NUM_21   /**< potwierdzone na plytce 31.10.2026 */
+#define FLORA_HEAD_I2C_SCL      GPIO_NUM_47   /**< potwierdzone na plytce 31.10.2026 */
 #define FLORA_HEAD_I2C_FREQ_HZ  100000        /**< 100 kHz: bezpiecznie przy dluzszych przewodach pod kopula */
 
 /* ---- UART w dol masztu (do bryly) ---- */
@@ -46,8 +46,15 @@
 #define FLORA_HEAD_CAM_RX       GPIO_NUM_39   /**< TODO potwierdzic */
 #define FLORA_HEAD_CAM_PORT     UART_NUM_2
 
-/* ---- Czujnik deszczu ---- */
-#define FLORA_HEAD_RAIN         GPIO_NUM_2    /**< TODO potwierdzic */
+/* ---- Klucze NVS glowicy ----
+ * Wlasne, nie z flora_board.h - ten opisuje bryle, a glowica ma osobna
+ * partycje NVS we wlasnym flashu. Limit NVS to 15 znakow na klucz.
+ */
+#define FLORA_HEAD_NVS_NS        "head"
+#define FLORA_HEAD_NVS_GYRO_X    "gyro_bias_x"
+#define FLORA_HEAD_NVS_GYRO_Y    "gyro_bias_y"
+#define FLORA_HEAD_NVS_GYRO_Z    "gyro_bias_z"
+#define FLORA_HEAD_NVS_GYRO_OK   "gyro_cal_ok"
 
 /* ---- Adresy na magistrali ---- */
 #define FLORA_HEAD_ADDR_MUX     0x70  /**< TCA9548A, A0-A2 do masy */

@@ -115,6 +115,16 @@ esp_err_t flora_icm20948_calibrate_gyro(flora_icm20948_handle_t h, int samples);
 /** Wyliczony offset zyroskopu w stopniach na sekunde. */
 void flora_icm20948_get_gyro_bias(flora_icm20948_handle_t h, float bias_dps[3]);
 
+/**
+ * @brief Wpisuje offset zyroskopu z zewnatrz.
+ *
+ * Do wgrania wartosci zapamietanej w NVS, bez ponownej kalibracji. Glowica
+ * masztu traci zasilanie przy kazdym uspieniu, a kalibracja wymaga 1-2 s
+ * bezruchu, czego nie da sie zagwarantowac - wiec offset liczy sie raz
+ * i odtwarza przy starcie.
+ */
+void flora_icm20948_set_gyro_bias(flora_icm20948_handle_t h, const float bias_dps[3]);
+
 bool    flora_icm20948_has_magnetometer(flora_icm20948_handle_t h);
 uint8_t flora_icm20948_who_am_i(flora_icm20948_handle_t h);
 

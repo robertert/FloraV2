@@ -303,6 +303,13 @@ void flora_icm20948_get_gyro_bias(flora_icm20948_handle_t h, float bias_dps[3])
     }
 }
 
+void flora_icm20948_set_gyro_bias(flora_icm20948_handle_t h, const float bias_dps[3])
+{
+    if (h && bias_dps) {
+        memcpy(h->gyro_bias, bias_dps, sizeof(h->gyro_bias));
+    }
+}
+
 bool flora_icm20948_has_magnetometer(flora_icm20948_handle_t h)
 {
     return h && h->has_mag;
