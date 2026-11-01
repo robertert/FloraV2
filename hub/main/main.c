@@ -1,17 +1,15 @@
 /**
  * Doniczka-robot, jednostka dolna (bryla).
  *
- * Test napedu na zmontowanej platformie. Teraz, gdy kola sa w podwoziu,
- * da sie wreszcie rozstrzygnac dwie rzeczy, ktore wczesniej wisialy:
- *   - znak odometrii (bez zdefiniowanego "przodu" nie bylo tego jak ustalic)
- *   - prawdziwe przelozenie przekladni (przez porownanie z pomiarem linijka)
+ * Tryb debugowania przez MQTT: telemetria wszystkiego, co dociera do bryly
+ * (wlasne czujniki i wiadomosci glowicy), plus proste sterowanie napedem,
+ * pompka i zasilaniem masztu. Panel: tools/dashboard/index.html.
  *
- * Pozostale testy, juz zaliczone, czekaja w swoich plikach:
- *   bringup_hydro_run()    - pompka z zabezpieczeniami, DS18B20
- *   bringup_sensors_run()  - wilgotnosc gleby, dalmierz ultradzwiekowy
+ * Testy rozruchowe, juz zaliczone, czekaja w swoich plikach - lista
+ * w bringup_task() ponizej.
  *
- * UWAGA: robot pojedzie. Potrzeba okolo metra wolnej przestrzeni albo
- * postawienia go na podstawkach.
+ * UWAGA: z panelu robot moze pojechac. Kola w powietrzu albo metr wolnej
+ * przestrzeni. Naped staje sam po 1,5 s bez odswiezenia komendy.
  */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -23,6 +21,9 @@
 #include "bringup_drive.h"
 #include "bringup_net.h"
 #include "bringup_power.h"
+#include "hub_links.h"
+#include "hub_remote.h"
+#include "hub_telemetry.h"
 #include "flora_board.h"
 #include "flora_ina226.h"
 #include "flora_store.h"
@@ -72,16 +73,25 @@ static void bringup_task(void *arg)
      *   bringup_hydro_run(s_ina)   - pompka, DS18B20
      *   bringup_sensors_run(true)  - gleba, sonar
      *   bringup_net_run()          - WiFi, MQTT
+     *   bringup_drive_run(s_ina)   - naped ze straznikiem
      */
-    bringup_drive_run(s_ina);
 
-    ESP_LOGI(TAG, "test zakonczony");
+    /* Siec pierwsza, ale jej brak nie blokuje reszty: klient MQTT ponawia
+     * w tle, a telemetria zacznie plynac, gdy broker sie pojawi. */
+    bringup_net_connect();
+    ESP_ERROR_CHECK(hub_telemetry_start(s_ina));
+    hub_links_start();
+    if (hub_remote_start() != ESP_OK) {
+        ESP_LOGE(TAG, "sterowanie przez MQTT niedostepne");
+    }
+
+    ESP_LOGI(TAG, "debug przez MQTT: tematy %s/#", FLORA_MQTT_BASE_TOPIC);
     vTaskDelete(NULL);
 }
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "doniczka-robot, jednostka dolna: test napedu ze strażnikiem");
+    ESP_LOGI(TAG, "doniczka-robot, jednostka dolna: debug przez MQTT");
 
     /* NVS jako pierwsze: trzymamy w nim kalibracje, a dodatkowo potrzebuja
      * go WiFi (kalibracja PHY) i BLE, gdy dojda. Wywolanie jest idempotentne. */

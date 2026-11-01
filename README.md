@@ -50,6 +50,24 @@ Nieznane komendy leca wprost do `idf.py`, np. `./dev.sh hub partition-table`.
 Przy dwoch podlaczonych plytkach trzeba wskazac port:
 `FLORA_PORT=/dev/cu.usbmodem101 ./dev.sh hub fm`.
 
+## Debug przez MQTT
+
+Bryla publikuje wszystko, co do niej dociera (wlasne czujniki i wiadomosci
+glowicy), pod `flora/robot1/tele/*` i `flora/robot1/head/*`, a komendy
+przyjmuje z `flora/robot1/cmd/*` (opis w `hub/main/hub_remote.h`).
+
+1. Broker na Macu (`brew install mosquitto`):
+   `mosquitto -c tools/dashboard/mosquitto.conf -v`
+2. Adres brokera dla robota to IP Maca w tej samej sieci:
+   `FLORA_MQTT_URI_DEFAULT` w `flora_board.h` albo klucz `mqtt_uri` w NVS.
+3. Panel: otworz `tools/dashboard/index.html` w przegladarce, adres
+   `ws://<ip-maca>:9001`. Strzalki na klawiaturze jada, spacja to STOP.
+4. Z terminala: `mosquitto_sub -t 'flora/robot1/#' -v`,
+   `mosquitto_pub -t flora/robot1/cmd/pump -m on`.
+
+Naped z panelu staje sam po 1,5 s bez odswiezenia komendy (dead-man),
+wiec zerwane WiFi nie zostawi jadacego robota.
+
 ## Stan
 
 Bryla ma sterowniki napedu, enkoderow i pomiaru pradu oraz test rozruchowy

@@ -58,10 +58,8 @@ static void on_command(const char *topic, size_t topic_len,
              (int)topic_len, topic, (int)data_len, data);
 }
 
-void bringup_net_run(void)
+esp_err_t bringup_net_connect(void)
 {
-    ESP_LOGI(TAG, "=== SIEC ===");
-
     /* --- dane dostepowe --- */
     char ssid[33], pass[65], uri[96];
     flora_store_t store = NULL;
@@ -87,7 +85,7 @@ void bringup_net_run(void)
     if (strcmp(ssid, "ZMIEN_MNIE") == 0) {
         ESP_LOGW(TAG, "  SSID to nadal wartosc zastepcza - uzupelnij");
         ESP_LOGW(TAG, "  flora_board.h albo zapisz do NVS pod \"%s\"", FLORA_NVS_WIFI_SSID);
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     /* --- WiFi --- */
@@ -98,7 +96,7 @@ void bringup_net_run(void)
 
     if (flora_wifi_init(&wcfg) != ESP_OK) {
         ESP_LOGE(TAG, "  nie udalo sie podniesc WiFi");
-        return;
+        return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "  czekam na adres (do 20 s)...");
@@ -106,7 +104,7 @@ void bringup_net_run(void)
     if (r != ESP_OK) {
         ESP_LOGE(TAG, "  brak polaczenia: %s", esp_err_to_name(r));
         ESP_LOGE(TAG, "  ponawianie dziala dalej w tle - log pokaze kolejne proby");
-        return;
+        return r;
     }
 
     /* --- MQTT --- */
@@ -118,12 +116,8 @@ void bringup_net_run(void)
 
     if (flora_mqtt_init(&mcfg) != ESP_OK) {
         ESP_LOGE(TAG, "  nie udalo sie uruchomic klienta MQTT");
-        return;
+        return ESP_FAIL;
     }
-
-    /* Subskrypcja zaklada sie nawet przed polaczeniem - komponent odtworzy
-     * ja po nawiazaniu i po kazdym ponownym polaczeniu. */
-    flora_mqtt_subscribe("cmd/#", 1, on_command, NULL);
 
     ESP_LOGI(TAG, "  czekam na brokera (do 10 s)...");
     for (int i = 0; i < 100 && !flora_mqtt_is_connected(); i++) {
@@ -133,8 +127,23 @@ void bringup_net_run(void)
     if (!flora_mqtt_is_connected()) {
         ESP_LOGE(TAG, "  broker nieosiagalny pod %s", uri);
         ESP_LOGE(TAG, "  sprawdz adres, port i czy broker nasluchuje poza localhostem");
+        ESP_LOGE(TAG, "  klient ponawia w tle - polaczenie moze jeszcze dojsc");
+        return ESP_ERR_TIMEOUT;
+    }
+    return ESP_OK;
+}
+
+void bringup_net_run(void)
+{
+    ESP_LOGI(TAG, "=== SIEC ===");
+
+    if (bringup_net_connect() != ESP_OK) {
         return;
     }
+
+    /* Subskrypcja zaklada sie nawet przed polaczeniem - komponent odtworzy
+     * ja po nawiazaniu i po kazdym ponownym polaczeniu. */
+    flora_mqtt_subscribe("cmd/#", 1, on_command, NULL);
 
     /* --- probna telemetria --- */
     ESP_LOGI(TAG, "  publikuje probna telemetrie:");
