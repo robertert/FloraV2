@@ -46,6 +46,65 @@
 #define FLORA_HEAD_CAM_RX       GPIO_NUM_39   /**< TODO potwierdzic */
 #define FLORA_HEAD_CAM_PORT     UART_NUM_2
 
+/* ---- Interfejs DVP kamery ----
+ * Pinout plytki Freenove ESP32-S3 WROVER CAM. Oznaczenia Y2..Y9 z
+ * dokumentacji Freenove odpowiadaja liniom danych D0..D7.
+ *
+ * SPRAWDZ, czy masz te sama plytke - kazdy inny modul S3 z gniazdem kamery
+ * ma swoj pinout, a wtedy esp_camera_init zglasza blad przy starcie.
+ *
+ * Te piny sa ZAJETE przez kamere i nie wolno ich uzyc do niczego innego:
+ *   4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18
+ * Stad I2C czujnikow na 21/47 i lacza UART na 38-42.
+ *
+ * SCCB (4/5) to OSOBNA magistrala, obslugiwana przez sterownik kamery.
+ * Nie ma nic wspolnego z I2C czujnikow glowicy.
+ *
+ * OBIEKTYW 160 STOPNI: przy obrazie 320x240 (przekatna/szerokosc = 1,25)
+ *   FOV poziomy = 2 * atan( tan(80 st) / 1,25 ) = 155 st
+ *   ogniskowa   = 160 / tan(77,6 st) = 35 px
+ * czyli PIEC razy krocej niz 297 px dla obiektywu 68-stopniowego z
+ * flora_cam_board.h. Pole widzenia rosnie, ale znacznik 300 mm da sie
+ * zdekodowac tylko z okolo 1,3 m zamiast 11 m - do znacznikow na palikach
+ * ten obiektyw NIE nadaje sie, do patrzenia pod kopule i omijania
+ * przeszkod owszem. Przy takim kacie liczy sie tez dystorsja, wiec do
+ * jakiejkolwiek geometrii trzeba bedzie kalibracji, nie jednej liczby.
+ */
+#define FLORA_HEAD_DVP_D0      GPIO_NUM_11   /**< Y2 */
+#define FLORA_HEAD_DVP_D1      GPIO_NUM_9    /**< Y3 */
+#define FLORA_HEAD_DVP_D2      GPIO_NUM_8    /**< Y4 */
+#define FLORA_HEAD_DVP_D3      GPIO_NUM_10   /**< Y5 */
+#define FLORA_HEAD_DVP_D4      GPIO_NUM_12   /**< Y6 */
+#define FLORA_HEAD_DVP_D5      GPIO_NUM_18   /**< Y7 */
+#define FLORA_HEAD_DVP_D6      GPIO_NUM_17   /**< Y8 */
+#define FLORA_HEAD_DVP_D7      GPIO_NUM_16   /**< Y9 */
+#define FLORA_HEAD_DVP_XCLK    GPIO_NUM_15
+#define FLORA_HEAD_DVP_PCLK    GPIO_NUM_13
+#define FLORA_HEAD_DVP_VSYNC   GPIO_NUM_6
+#define FLORA_HEAD_DVP_HREF    GPIO_NUM_7
+#define FLORA_HEAD_DVP_SDA     GPIO_NUM_4    /**< SIOD */
+#define FLORA_HEAD_DVP_SCL     GPIO_NUM_5    /**< SIOC */
+#define FLORA_HEAD_DVP_PWDN    (-1)          /**< niewyprowadzony na Freenove */
+#define FLORA_HEAD_DVP_RESET   (-1)
+
+/** Makro wypelniajace flora_camera_pins_t pinami tej plytki. */
+#define FLORA_HEAD_DVP_PINS()                   \
+    {                                           \
+        .pin_pwdn = FLORA_HEAD_DVP_PWDN,        \
+        .pin_reset = FLORA_HEAD_DVP_RESET,      \
+        .pin_xclk = FLORA_HEAD_DVP_XCLK,        \
+        .pin_sccb_sda = FLORA_HEAD_DVP_SDA,     \
+        .pin_sccb_scl = FLORA_HEAD_DVP_SCL,     \
+        .pin_d7 = FLORA_HEAD_DVP_D7, .pin_d6 = FLORA_HEAD_DVP_D6, \
+        .pin_d5 = FLORA_HEAD_DVP_D5, .pin_d4 = FLORA_HEAD_DVP_D4, \
+        .pin_d3 = FLORA_HEAD_DVP_D3, .pin_d2 = FLORA_HEAD_DVP_D2, \
+        .pin_d1 = FLORA_HEAD_DVP_D1, .pin_d0 = FLORA_HEAD_DVP_D0, \
+        .pin_vsync = FLORA_HEAD_DVP_VSYNC,      \
+        .pin_href = FLORA_HEAD_DVP_HREF,        \
+        .pin_pclk = FLORA_HEAD_DVP_PCLK,        \
+        .xclk_freq_hz = 20000000,               \
+    }
+
 /* ---- Klucze NVS glowicy ----
  * Wlasne, nie z flora_board.h - ten opisuje bryle, a glowica ma osobna
  * partycje NVS we wlasnym flashu. Limit NVS to 15 znakow na klucz.

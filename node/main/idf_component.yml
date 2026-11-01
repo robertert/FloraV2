@@ -1,0 +1,4 @@
+dependencies:
+  # Sterownik kamery DVP. Potrzebny TYLKO do testu podgladu (bringup_cam.c) -
+  # docelowa detekcja znacznikow siega po niego przez flora_camera.
+  espressif/esp32-camera: "^2.1.8"

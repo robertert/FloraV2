@@ -25,6 +25,7 @@
 #include "esp_err.h"
 #include "driver/i2c_master.h"
 
+#include "bringup_cam.h"
 #include "bringup_head.h"
 #include "bringup_link.h"
 #include "head_cmd.h"
@@ -95,6 +96,13 @@ static void start_task(void *arg)
     }
     ESP_ERROR_CHECK(head_slow_start(&slow));
 
+    /* 5. Podglad kamery w przegladarce. Test rozruchowy, nie element petli:
+     *    podnosi WiFi i zajmuje kamere w trybie JPEG, wiec gdy ruszy
+     *    detekcja znacznikow przez flora_camera, to wywolanie trzeba usunac
+     *    (sterownik przyjmuje jedna konfiguracje kamery na uklad).
+     *    Blad nie przerywa startu - reszta glowicy dziala bez obrazu. */
+    bringup_cam_preview();
+
     ESP_LOGI(TAG, "petla sterowania dziala");
     vTaskDelete(NULL);
 }
@@ -115,6 +123,7 @@ void app_main(void)
     }
 
     /* Start w osobnym zadaniu, bo rozruch blokuje na kilka sekund,
-     * a app_main nie powinno tyle trzymac. */
-    xTaskCreate(start_task, "start", 5120, NULL, 6, NULL);
+     * a app_main nie powinno tyle trzymac. Stos z zapasem na podniesienie
+     * WiFi i kamery w kroku 5 - samo esp_wifi_init zjada ponad 3 kB. */
+    xTaskCreate(start_task, "start", 6144, NULL, 6, NULL);
 }
