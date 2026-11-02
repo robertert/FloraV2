@@ -97,12 +97,16 @@ static void start_task(void *arg)
     }
     ESP_ERROR_CHECK(head_slow_start(&slow));
 
-    /* 5. Podglad kamery w przegladarce. Test rozruchowy, nie element petli:
-     *    podnosi WiFi i zajmuje kamere w trybie JPEG, wiec gdy ruszy
-     *    detekcja znacznikow przez flora_camera, to wywolanie trzeba usunac
-     *    (sterownik przyjmuje jedna konfiguracje kamery na uklad).
+    /* 5. Kamera. W pracy w terenie bez sieci: obrazu nikt nie oglada, a
+     *    radio na solarnej glowicy to najwiekszy pojedynczy pobor. Podglad
+     *    przez przegladarke wlacza sie flaga w flora_head_board.h, gdy
+     *    trzeba wycelowac kamere, zebrac klatki albo ustawic jej wysokosc.
      *    Blad nie przerywa startu - reszta glowicy dziala bez obrazu. */
-    bringup_cam_preview();
+    if (FLORA_HEAD_CAM_NET_DEFAULT) {
+        bringup_cam_preview();
+    } else {
+        bringup_cam_offline();
+    }
 
     /* 6. Wykrywanie przeszkod. Rusza tylko w trybie surowym kamery, bo w
      *    trybie podgladu JPEG nie ma czego przetwarzac. Brak wizji nie

@@ -169,17 +169,21 @@ esp_err_t head_obstacles_start(flora_link_handle_t down)
      * odleglosc jest wprost proporcjonalna do tej liczby. Zmierz miarka i
      * zapisz, a nie zgaduj - blad wysokosci przeklada sie jeden do jednego
      * na blad odleglosci. */
+    int32_t h = FLORA_HEAD_CAM_HEIGHT_MM;
     flora_store_t store = NULL;
     if (flora_store_open(FLORA_HEAD_NVS_NS, &store) == ESP_OK) {
-        int32_t h = 0;
-        flora_store_get_i32(store, NVS_CAM_H_MM, &h, 0);
+        /* NVS ma pierwszenstwo nad stala z naglowka: przy wlaczonym
+         * podgladzie da sie poprawic wysokosc bez rekompilacji. */
+        flora_store_get_i32(store, NVS_CAM_H_MM, &h, FLORA_HEAD_CAM_HEIGHT_MM);
         flora_store_close(store);
-        cfg.cam_height_mm = (float)h;
     }
+    cfg.cam_height_mm = (float)h;
+
     if (cfg.cam_height_mm <= 0.0f) {
-        ESP_LOGW(TAG, "brak wysokosci kamery w NVS (klucz \"%s\") - sektory beda",
-                 NVS_CAM_H_MM);
-        ESP_LOGW(TAG, "raportowane jako nieznane zamiast w centymetrach");
+        ESP_LOGW(TAG, "WYSOKOSC KAMERY NIE JEST ZNANA - sektory pojada jako");
+        ESP_LOGW(TAG, "nieznane zamiast w centymetrach, czyli bryla ich nie uzyje.");
+        ESP_LOGW(TAG, "Zmierz miarka i wpisz w FLORA_HEAD_CAM_HEIGHT_MM albo");
+        ESP_LOGW(TAG, "w NVS pod kluczem \"%s\".", NVS_CAM_H_MM);
     }
 
     const size_t need = flora_ground_arena_size(&cfg);

@@ -88,6 +88,46 @@
 #define FLORA_HEAD_DVP_RESET   (-1)
 
 /**
+ * Czy glowica ma w ogole podnosic WiFi i serwer podgladu obrazu.
+ *
+ * DOMYSLNIE NIE. Obraz po sieci byl potrzebny do wycelowania kamery,
+ * zebrania zbioru i sprawdzenia detekcji - wszystko to jest zrobione, a
+ * utrzymywanie tego kosztuje trzy razy:
+ *
+ *  - ENERGIA. Robot jest solarny, a nadajace radio to najwiekszy pojedynczy
+ *    pobor na glowicy. Maszt i tak bywa odcinany od zasilania przez bryle.
+ *  - TEMPO WIZJI. Serwer HTTP ma wyzszy priorytet niz zadanie wykrywania
+ *    przeszkod i walczy z nim o te sama kamere. Zmierzone: przy otwartej
+ *    stronie czas na klatke skakal z 233 ms na 1728 ms.
+ *  - CIEPLO. Modul kamery grzeje sie sam, a radio doklada swoje.
+ *
+ * Wpisz 1, gdy bedziesz chcial znowu zebrac klatki albo ustawic wysokosc
+ * kamery przez http://<ip>/height. Flaga jest czytana przy starcie, wiec
+ * zmiana wymaga przeflashowania - swiadomie, bo to ustawienie serwisowe,
+ * nie tryb pracy. Gdyby kiedys mialo byc przelaczane zdalnie, wlasciwym
+ * miejscem jest kanal komend z bryly (flora_cmd_code_t i head_cmd.c).
+ */
+#define FLORA_HEAD_CAM_NET_DEFAULT 0
+
+/**
+ * Wysokosc obiektywu nad ziemia w milimetrach. ZERO znaczy "nie zmierzono".
+ *
+ * Bez tej liczby detektor przeszkod dziala, ale nie umie zamienic
+ * pierscienia obrazu na odleglosc i kazdy sektor idzie na kabel jako zero,
+ * czyli "nie wiem" - co dla straznika w bryle znaczy "nie jedz". Czyli:
+ * bez pomiaru wykrywanie dziala w logu, a nie dziala w praktyce.
+ *
+ * Geometria nadiru to `odleglosc = h * tan(promien_px / f)`, czyli skaluje
+ * sie WPROST PROPORCJONALNIE do h. Blad wysokosci przeklada sie jeden do
+ * jednego na blad odleglosci - zmierz miarka, nie szacuj.
+ *
+ * Klucz "cam_h_mm" w NVS ma pierwszenstwo nad ta stala, wiec przy
+ * wlaczonym podgladzie mozna ja nadpisac przez http://<ip>/height?mm=NNN
+ * bez rekompilacji.
+ */
+#define FLORA_HEAD_CAM_HEIGHT_MM 0
+
+/**
  * Zegar wejsciowy czujnika.
  *
  * CIEPLO, NIE WYDAJNOSC, decyduje o tej liczbie. Modul OV5640 przy 20 MHz

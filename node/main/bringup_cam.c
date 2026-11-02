@@ -672,32 +672,21 @@ static esp_err_t server_up(void)
 
 /* ----------------------------------------------------------------- test -- */
 
-esp_err_t bringup_cam_preview(void)
+/** Wspolny rozruch: blokada, kamera, timer usypiania. */
+static esp_err_t camera_stage(void)
 {
-    s_mode = mode_load();
-    ESP_LOGI(TAG, "--- podglad kamery, tryb %s ---",
-             s_mode == MODE_RAW ? "raw (RGB565)" : "jpeg");
-
     s_cam_lock = xSemaphoreCreateMutex();
     if (!s_cam_lock) {
         return ESP_ERR_NO_MEM;
     }
 
-    esp_err_t r = wifi_up();
+    /* Kamere podnosimy raz na starcie, zeby blad pinoutu albo tasmy wyszedl
+     * TERAZ, w logu rozruchowym, a nie przy pierwszym uzyciu. */
+    esp_err_t r = camera_up();
     if (r != ESP_OK) {
         return r;
     }
-    /* Kamere podnosimy raz na starcie, zeby blad pinoutu albo tasmy wyszedl
-     * TERAZ, w logu rozruchowym, a nie przy pierwszym wejsciu na strone. */
-    if ((r = camera_up()) != ESP_OK) {
-        return r;
-    }
     s_last_use_us = esp_timer_get_time();
-
-    if ((r = server_up()) != ESP_OK) {
-        flora_camera_deinit();
-        return r;
-    }
 
     const esp_timer_create_args_t idle_args = {
         .callback = idle_check,
@@ -707,6 +696,44 @@ esp_err_t bringup_cam_preview(void)
         esp_timer_start_periodic(s_idle_timer, IDLE_CHECK_MS * 1000ULL);
     } else {
         ESP_LOGW(TAG, "  bez timera usypiania - kamera bedzie pracowac ciagle");
+    }
+    return ESP_OK;
+}
+
+esp_err_t bringup_cam_offline(void)
+{
+    /* Bez sieci podglad JPEG nie ma odbiorcy, wiec format wymuszamy, a nie
+     * czytamy z NVS - inaczej glowica zapamietana w trybie jpeg wstalaby
+     * z kamera, ktorej detektor nie umie przetworzyc, i nikt by sie o tym
+     * nie dowiedzial az do pierwszego logu bez przeszkod. */
+    s_mode = MODE_RAW;
+    ESP_LOGI(TAG, "--- kamera bez sieci, tryb raw (RGB565) ---");
+
+    esp_err_t r = camera_stage();
+    if (r == ESP_OK) {
+        ESP_LOGI(TAG, "  WiFi i serwer podgladu wylaczone "
+                      "(FLORA_HEAD_CAM_NET_DEFAULT = 0)");
+    }
+    return r;
+}
+
+esp_err_t bringup_cam_preview(void)
+{
+    s_mode = mode_load();
+    ESP_LOGI(TAG, "--- podglad kamery, tryb %s ---",
+             s_mode == MODE_RAW ? "raw (RGB565)" : "jpeg");
+
+    esp_err_t r = wifi_up();
+    if (r != ESP_OK) {
+        return r;
+    }
+    if ((r = camera_stage()) != ESP_OK) {
+        return r;
+    }
+
+    if ((r = server_up()) != ESP_OK) {
+        flora_camera_deinit();
+        return r;
     }
 
     flora_wifi_info_t info;

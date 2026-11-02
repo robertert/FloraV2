@@ -78,6 +78,17 @@ http://<ip-glowicy>/      zywy obraz w przegladarce
 http://<ip-glowicy>/jpg   jedna klatka, np. curl -o kadr.jpg http://<ip>/jpg
 ```
 
+**Domyslnie obraz NIE jest dostepny przez siec.** Glowica wstaje bez WiFi i
+bez serwera HTTP: obrazu nikt nie oglada, a jedynym odbiorca jest detektor
+przeszkod. Radio na solarnej glowicy to najwiekszy pojedynczy pobor, a serwer
+HTTP ma wyzszy priorytet niz wizja i walczy z nia o kamere (zmierzone: przy
+otwartej stronie czas na klatke skakal z 233 ms na 1728 ms). Linker wyrzuca
+wtedy caly stos sieciowy, wiec obraz aplikacji schodzi z 1034 kB do 398 kB.
+
+Podglad wlacza sie przez `FLORA_HEAD_CAM_NET_DEFAULT 1` w `flora_head_board.h`
+i przeflashowanie - do wycelowania kamery, zebrania klatek albo ustawienia jej
+wysokosci. Wtedy dopiero dziala ponizsze:
+
 Kamera przyjmuje JEDEN format na uruchomienie, wiec glowica ma dwa tryby i
 przelacza je przez `http://<ip>/mode?v=jpeg` albo `?v=raw` (zapis do NVS i
 restart, okolo dwoch sekund):
@@ -110,9 +121,39 @@ synth.py /tmp/test.rgb565 --joints --shadow 90 --obstacle -50,80,24
 ```
 
 `ground.py` pracuje na siatce POLARNEJ wokol srodka kadru, bo kamera patrzy
-prosto w dol. Wynik jest w pierscieniach i pikselach, nie w centymetrach -
-zamiana na odleglosc wymaga wysokosci kamery nad ziemia i kalibracji miarka,
-czyli docelowego montazu. Sesje lezą w `tools/vision/data/` i NIE sa w repo.
+prosto w dol: PIERSCIEN to odleglosc (0 najblizej), WYCINEK to kierunek
+(16 sztuk, od lewej do prawej, jak `sectors[]` w kontrakcie). W wyniku `12`
+znaczy czysto do konca zasiegu, a `-1` nieznane. Przelacznik `--grid` rysuje
+granice i numery wycinkow wprost na kadrze - bez tego trzeba liczyc wycinki
+palcem po ekranie. Sesje lezą w `tools/vision/data/` i NIE sa w repo.
+
+## Wykrywanie przeszkod
+
+Glowica liczy 16 odleglosci i wysyla je w dol jako `FLORA_MSG_OBSTACLES`
+(`components/flora_ground` plus `node/main/head_obstacles.c`, 4 Hz). Bryla
+publikuje je na `head/obstacles`.
+
+Nie uczymy sie, jak wyglada przeszkoda - w kazdej klatce od nowa uczymy sie,
+jak wyglada PODLOZE tuz przy kamerze, i szukamy, gdzie przestaje tak wygladac.
+Dlatego to samo dziala na kostce, betonie i trawie bez zadnego uczenia.
+Porownanie idzie po BARWIE, nie po jasnosci, zeby cien nie byl przeszkoda.
+
+Zanim sektory zaczna niesc centymetry, trzeba zmierzyc wysokosc obiektywu nad
+ziemia i wpisac ja w `FLORA_HEAD_CAM_HEIGHT_MM`. Bez tego ida jako "nie wiem".
+
+Rdzen algorytmu nie zalezy od ESP-IDF i kompiluje sie zwyklym gcc, co sluzy
+do sprawdzania, czy wersja na robocie liczy to samo co prototyp:
+
+```sh
+cd components/flora_ground/host
+cc -O2 -I../include -o runner runner.c ../flora_ground.c -lm
+./runner --r-in 2 ../../../tools/vision/data/<sesja>/*.rgb565
+```
+
+Po KAZDEJ zmianie algorytmu porownaj wynik z `tools/vision/ground.py` na tych
+samych klatkach. Uwaga: harness NIE wykryje bledow pamieci, bo na komputerze
+stos ma megabajty - tak przeszlo przepelnienie stosu, ktore na ESP wywalalo
+zadanie po dwoch sekundach.
 
 ## Stan
 

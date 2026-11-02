@@ -43,6 +43,18 @@
  */
 esp_err_t bringup_cam_preview(void);
 
+/**
+ * @brief Podnosi SAMA KAMERE, bez WiFi i bez serwera HTTP.
+ *
+ * Tryb pracy w terenie: obrazu nikt nie oglada, jedynym odbiorca jest
+ * detektor przeszkod. Wymusza format surowy, bo bez sieci podglad JPEG
+ * nie mialby komu sluzyc.
+ *
+ * Usypianie kamery po ciszy dziala tak samo jak przy podgladzie, wiec
+ * zatrzymanie zadania wizji nadal wylacza zegar czujnika.
+ */
+esp_err_t bringup_cam_offline(void);
+
 /** Czy glowica wstala w trybie surowym, czyli nadaje sie do wykrywania przeszkod. */
 bool bringup_cam_is_raw_mode(void);
 
