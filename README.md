@@ -68,10 +68,59 @@ przyjmuje z `flora/robot1/cmd/*` (opis w `hub/main/hub_remote.h`).
 Naped z panelu staje sam po 1,5 s bez odswiezenia komendy (dead-man),
 wiec zerwane WiFi nie zostawi jadacego robota.
 
+## Podglad kamery i zbieranie danych
+
+Glowica w trybie podgladu stawia serwer HTTP i nadaje strumien MJPEG. Adres
+pojawia sie w logu po starcie (`./dev.sh node monitor`):
+
+```
+http://<ip-glowicy>/      zywy obraz w przegladarce
+http://<ip-glowicy>/jpg   jedna klatka, np. curl -o kadr.jpg http://<ip>/jpg
+```
+
+Kamera przyjmuje JEDEN format na uruchomienie, wiec glowica ma dwa tryby i
+przelacza je przez `http://<ip>/mode?v=jpeg` albo `?v=raw` (zapis do NVS i
+restart, okolo dwoch sekund):
+
+| tryb | do czego | endpointy |
+|---|---|---|
+| `jpeg` | celowanie kamery, ocena ostrosci | `/stream`, `/jpg` |
+| `raw` | zbieranie zbioru, 320x240 RGB565 | `/raw` |
+
+Zbior zbieramy w trybie **raw**, nie JPEG: kompresja podprobkowuje chrominancje
+4:2:0 i doklada artefakty blokow, czyli psuje dokladnie ten sygnal, na ktorym
+stoi wykrywanie przeszkod. Prototyp na Macu musi widziec te same bajty, ktore
+zobaczy pozniej algorytm na ESP.
+
+## Narzedzia wizyjne (`tools/vision/`)
+
+Zadnych zaleznosci z pip - sama biblioteka standardowa Pythona i `mosquitto_sub`
+z brew.
+
+```sh
+# zbieranie: klatki + migawka telemetrii z MQTT do kazdej
+collect.py --host 192.168.1.42 --surface kostka --light slonce --raw
+collect.py --host 192.168.1.42 --surface beton --light cien --raw --no-mqtt
+
+# prototyp wykrywania: nakladka PNG + linia JSON na klatke
+ground.py data/20261101-kostka-slonce/*.rgb565
+
+# syntetyczne klatki o znanej odpowiedzi, do testow bez kamery
+synth.py /tmp/test.rgb565 --joints --shadow 90 --obstacle -50,80,24
+```
+
+`ground.py` pracuje na siatce POLARNEJ wokol srodka kadru, bo kamera patrzy
+prosto w dol. Wynik jest w pierscieniach i pikselach, nie w centymetrach -
+zamiana na odleglosc wymaga wysokosci kamery nad ziemia i kalibracji miarka,
+czyli docelowego montazu. Sesje lezą w `tools/vision/data/` i NIE sa w repo.
+
 ## Stan
 
-Bryla ma sterowniki napedu, enkoderow i pomiaru pradu oraz test rozruchowy
-w `hub/main/main.c`. Glowica to na razie pusty szkielet - czeka na plytke
-ESP32-S3 z gniazdem kamery.
+Bryla ma sterowniki napedu, enkoderow i pomiaru pradu, telemetrie MQTT i
+zdalne sterowanie z panelu. Glowica ma petle czujnikow (fuzja kursu, kompas
+sloneczny, BME280), oba lacza UART i kamere OV5640 z obiektywem 160 stopni
+patrzaca w dol z masztu, na razie w trybie podgladu. Wykrywanie przeszkod jest
+w planie: kontrakt `FLORA_MSG_OBSTACLES` i publikacja na MQTT juz istnieja,
+brakuje producenta w glowicy i weta napedu w bryle.
 
 **Uwaga przy uruchamianiu testu napedu: kola musza byc w powietrzu.**

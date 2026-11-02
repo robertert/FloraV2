@@ -25,7 +25,10 @@
  */
 #pragma once
 
+#include <stdbool.h>
+
 #include "esp_err.h"
+#include "flora_camera.h"
 
 /**
  * @brief Laczy z WiFi, startuje kamere w trybie JPEG i serwer podgladu.
@@ -39,3 +42,17 @@
  *         reszta glowicy dziala dalej, podglad jest dodatkiem
  */
 esp_err_t bringup_cam_preview(void);
+
+/** Czy glowica wstala w trybie surowym, czyli nadaje sie do wykrywania przeszkod. */
+bool bringup_cam_is_raw_mode(void);
+
+/**
+ * @brief Pobiera klatke i ZATRZYMUJE dostep do kamery.
+ *
+ * Kamera jest zasobem dzielonym miedzy uchwytami HTTP a zadaniem wizji, a
+ * do tego bywa uspiona dla chlodzenia - stad jeden wlasciciel i jedna
+ * blokada zamiast wolania flora_camera_grab() z dwoch miejsc. Po powrocie
+ * ESP_OK KONIECZNIE oddaj przez bringup_cam_frame_end().
+ */
+esp_err_t bringup_cam_frame_begin(flora_camera_frame_t *out);
+void      bringup_cam_frame_end(flora_camera_frame_t *fr);

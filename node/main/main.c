@@ -31,6 +31,7 @@
 #include "head_cmd.h"
 #include "head_fusion.h"
 #include "head_links.h"
+#include "head_obstacles.h"
 #include "head_slow.h"
 
 #include "flora_head_board.h"
@@ -102,6 +103,11 @@ static void start_task(void *arg)
      *    (sterownik przyjmuje jedna konfiguracje kamery na uklad).
      *    Blad nie przerywa startu - reszta glowicy dziala bez obrazu. */
     bringup_cam_preview();
+
+    /* 6. Wykrywanie przeszkod. Rusza tylko w trybie surowym kamery, bo w
+     *    trybie podgladu JPEG nie ma czego przetwarzac. Brak wizji nie
+     *    przerywa startu - glowica dziala bez niej. */
+    head_obstacles_start(head_link_down());
 
     ESP_LOGI(TAG, "petla sterowania dziala");
     vTaskDelete(NULL);

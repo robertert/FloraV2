@@ -87,6 +87,21 @@
 #define FLORA_HEAD_DVP_PWDN    (-1)          /**< niewyprowadzony na Freenove */
 #define FLORA_HEAD_DVP_RESET   (-1)
 
+/**
+ * Zegar wejsciowy czujnika.
+ *
+ * CIEPLO, NIE WYDAJNOSC, decyduje o tej liczbie. Modul OV5640 przy 20 MHz
+ * i ciaglym strumieniowaniu robi sie goracy w dotyku w kilka minut, bo
+ * czujnik pracuje caly czas z pelna szybkoscia niezaleznie od tego, ile
+ * klatek faktycznie odbieramy. Polowa zegara to polowa pracy wewnetrznej
+ * i wyraznie nizsza temperatura, a przy wykrywaniu przeszkod i tak
+ * potrzebujemy 4 klatek na sekunde, nie trzydziestu.
+ *
+ * Jesli czujnik nie wystartuje przy tej wartosci, aplikacja powinna
+ * sprobowac 20 MHz i zapisac to w logu - tak robi bringup_cam.c.
+ */
+#define FLORA_HEAD_DVP_XCLK_HZ 10000000
+
 /** Makro wypelniajace flora_camera_pins_t pinami tej plytki. */
 #define FLORA_HEAD_DVP_PINS()                   \
     {                                           \
@@ -102,7 +117,7 @@
         .pin_vsync = FLORA_HEAD_DVP_VSYNC,      \
         .pin_href = FLORA_HEAD_DVP_HREF,        \
         .pin_pclk = FLORA_HEAD_DVP_PCLK,        \
-        .xclk_freq_hz = 20000000,               \
+        .xclk_freq_hz = FLORA_HEAD_DVP_XCLK_HZ, \
     }
 
 /* ---- Klucze NVS glowicy ----

@@ -20,3 +20,7 @@ CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
+
+# Autofokus OV5640. Domyslnie w komponencie wylaczony, a bez tego wskazniki
+# funkcji AF sa NULL i nie da sie nawet SPRAWDZIC, czy modul ma silniczek.
+CONFIG_CAMERA_AF_SUPPORT=y

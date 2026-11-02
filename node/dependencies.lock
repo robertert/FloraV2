@@ -70,6 +70,6 @@ direct_dependencies:
 - espressif/esp32-camera
 - espressif/mqtt
 - liux-pro/apriltag
-manifest_hash: b8b352e931650f01db8fa88e104528b7f01fdd981cd5b3501a2daf892fda6646
+manifest_hash: d88fa7524a8633a6bf6c28f1a0d42adef0c5add69d3f749a981af7ebcf92f7aa
 target: esp32s3
 version: 3.0.0

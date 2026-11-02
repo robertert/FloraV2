@@ -1,4 +1,6 @@
 build/
+# Zebrane zbiory klatek - duze i odtwarzalne nowa sesja.
+tools/vision/data/
 sdkconfig
 sdkconfig.old
 # Pobierane przez component manager, odtwarzalne z idf_component.yml.
@@ -13,3 +15,11 @@ managed_components/
 .history/
 .idea/
 .DS_Store
+
+# Cache interpretera Pythona w narzedziach wizyjnych.
+__pycache__/
+*.pyc
+
+# Program weryfikujacy port algorytmu na komputerze - budowany z zrodel
+# jednym poleceniem cc, patrz components/flora_ground/host/.
+components/flora_ground/host/runner
