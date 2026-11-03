@@ -11,9 +11,9 @@ ktore buduje CI z tagu git; na serwerze leza tylko sekrety i dane.
 | `mqtts://<domena>:8883` | robot (login `robot1`) |
 
 ```
-git tag v1.2.0 && git push origin v1.2.0
+git tag server-v1.2.0 && git push origin server-v1.2.0
    -> GitHub Actions buduje flora-caddy, -mosquitto, -telegraf, -grafana
-   -> wypycha do ghcr.io/robertert/flora-*:v1.2.0
+   -> wypycha do ghcr.io/robertert/flora-*:v1.2.0   (prefiks "server-" obciety)
    -> ssh deploy@VPS v1.2.0  (klucz moze uruchomic TYLKO flora-deploy)
    -> flora-deploy: FLORA_VERSION=v1.2.0 w .env, pull, up -d, test zdrowia,
       przy awarii powrot do poprzedniej wersji
@@ -41,8 +41,8 @@ nie maja w `docker-compose.yml` zadnych `ports:`.
    ```sh
    sudo docker login ghcr.io -u robertert     # haslo = ten token
    ```
-3. **Pierwsze obrazy:** wypchnij pierwszy tag (`git tag v0.1.0 && git push
-   origin v0.1.0`). Zadanie `images` zbuduje obrazy, a `deploy` sie nie uda,
+3. **Pierwsze obrazy:** wypchnij pierwszy tag (`git tag server-v0.1.0 && git push
+   origin server-v0.1.0`). Zadanie `images` zbuduje obrazy, a `deploy` sie nie uda,
    bo serwer nie ma jeszcze `.env` - to oczekiwane przy pierwszym razie.
 4. **Setup na serwerze:**
    ```sh
@@ -63,7 +63,9 @@ nie maja w `docker-compose.yml` zadnych `ports:`.
 
 ## CI: wdrozenie z tagu
 
-Workflow: `.github/workflows/deploy.yml`. Serwer przyjmuje go przez osobnego
+Workflow: `.github/workflows/server.yml`, uruchamiany tylko tagami
+`server-vX.Y.Z`. Prefiks oddziela wersje serwera od wersji firmware, ktore
+dostana wlasne tagi przy OTA. Serwer przyjmuje go przez osobnego
 uzytkownika `deploy`, ktory nie ma powloki - jego klucz moze tylko wywolac
 `flora-deploy` z tagiem.
 
@@ -108,7 +110,7 @@ zeby CI nie zaufalo podstawionemu serwerowi.
 
 **Recznie, na serwerze:**
 ```sh
-sudo flora-deploy v1.1.0 < /dev/null    # powrot do starszej wersji
+sudo flora-deploy v1.1.0 < /dev/null    # powrot do starszej wersji (bez "server-")
 grep FLORA_VERSION /opt/flora/tools/server/.env   # co teraz dziala
 ```
 

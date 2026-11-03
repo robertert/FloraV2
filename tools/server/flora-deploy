@@ -8,6 +8,7 @@
 #
 # Wywolanie:
 #   flora-deploy v1.2.0 < pliki.tar.gz   CI: nowa wersja + pliki serwera
+#                                        (z tagu server-v1.2.0, prefiks obciety)
 #   flora-deploy v1.1.0                  recznie: powrot do starszej wersji
 #
 # CI loguje sie kluczem, ktory w authorized_keys uzytkownika "deploy" ma

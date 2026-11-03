@@ -1,0 +1,91 @@
+# Tag server-vX.Y.Z -> obrazy flora-* do GHCR -> wdrozenie na VPS.
+#
+#   git tag server-v0.1.0 && git push origin server-v0.1.0
+#
+# Prefiks "server-" oddziela wersje serwera od wersji firmware (OTA dostanie
+# wlasny prefiks), wiec tag firmware nie uruchomi tego workflow. Prefiks jest
+# obcinany: obrazy i FLORA_VERSION na serwerze maja postac vX.Y.Z.
+#
+# Sekrety srodowiska "production" (Settings > Environments > production):
+#   DEPLOY_HOST         adres VPS, np. vps-xxxxxxx.vps.ovh.net
+#   DEPLOY_SSH_KEY      klucz prywatny CI (tylko do wymuszonej komendy flora-deploy)
+#   DEPLOY_KNOWN_HOSTS  odcisk serwera: wynik `ssh-keyscan <host>` sprawdzony recznie
+# Konfiguracja serwera: tools/server/README.md, sekcja "CI".
+name: server
+
+on:
+  push:
+    tags: ["server-v*.*.*"]
+
+# Dwa tagi naraz nie wdrazaja sie rownolegle - drugi czeka.
+concurrency:
+  group: server-deploy
+  cancel-in-progress: false
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [caddy, mosquitto, telegraf, grafana]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wersja
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#server-}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: tools/server/images/${{ matrix.service }}/Dockerfile
+          # VPS w OVH to x86_64.
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/flora-${{ matrix.service }}:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/flora-${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-latest
+    # Srodowisko w GitHubie: trzyma sekrety DEPLOY_* i pozwala wlaczyc
+    # reczne zatwierdzanie kazdego wdrozenia.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Klucz SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Odcisk z sekretu, nie ssh-keyscan w locie - inaczej CI ufaloby
+          # kazdemu, kto podszyje sie pod serwer.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Wdrozenie
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#server-}"
+          # Pliki serwera ida na wejscie flora-deploy; wersja jako jedyny argument.
+          tar -czf - -C tools/server docker-compose.yml setup.sh renew-certs.sh \
+            | ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes "deploy@$HOST" "$VERSION"

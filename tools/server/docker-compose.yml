@@ -9,8 +9,8 @@
 # Uruchomienie: patrz README.md obok. Wymaga pliku .env (setup.sh go tworzy).
 #
 # Konfiguracja (Caddyfile, mosquitto.conf, acl, telegraf.conf, Grafana, panel)
-# jest wbudowana w obrazy flora-*, budowane przez CI z tagu git
-# (.github/workflows/deploy.yml). FLORA_VERSION w .env wybiera wersje;
+# jest wbudowana w obrazy flora-*, budowane przez CI z tagu server-vX.Y.Z
+# (.github/workflows/server.yml). FLORA_VERSION w .env wybiera wersje;
 # wdrozenie i powrot do starszej robi flora-deploy. Sekrety (.env, passwd,
 # certyfikaty) zostaja na serwerze i sa montowane, nigdy w obrazie.
 
