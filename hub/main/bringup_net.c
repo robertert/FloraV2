@@ -111,15 +111,29 @@ static esp_err_t try_connect(const char *ssid, const char *pass, const char *uri
     return ESP_OK;
 }
 
+/** Jeden zestaw ustawien polaczenia. */
+typedef struct {
+    const char *label;
+    const char *ssid, *pass, *uri, *user, *mpass;
+} net_attempt_t;
+
+static bool same_attempt(const net_attempt_t *a, const net_attempt_t *b)
+{
+    return strcmp(a->ssid, b->ssid) == 0 && strcmp(a->pass, b->pass) == 0 &&
+           strcmp(a->uri, b->uri) == 0 && strcmp(a->user, b->user) == 0 &&
+           strcmp(a->mpass, b->mpass) == 0;
+}
+
 esp_err_t bringup_net_connect(void)
 {
     /* --- dane dostepowe --- */
-    char ssid[33], pass[65], uri[96], muser[33] = "", mpass[65] = "";
+    char ssid[33], pass[65], uri[96], muser[33], mpass[65] = "";
     flora_store_t store = NULL;
 
-    strncpy(ssid, FLORA_WIFI_SSID_DEFAULT, sizeof(ssid) - 1); ssid[sizeof(ssid) - 1] = 0;
-    strncpy(pass, FLORA_WIFI_PASS_DEFAULT, sizeof(pass) - 1); pass[sizeof(pass) - 1] = 0;
-    strncpy(uri,  FLORA_MQTT_URI_DEFAULT,  sizeof(uri) - 1);  uri[sizeof(uri) - 1]  = 0;
+    strncpy(ssid,  FLORA_WIFI_SSID_DEFAULT, sizeof(ssid) - 1);  ssid[sizeof(ssid) - 1] = 0;
+    strncpy(pass,  FLORA_WIFI_PASS_DEFAULT, sizeof(pass) - 1);  pass[sizeof(pass) - 1] = 0;
+    strncpy(uri,   FLORA_MQTT_URI_DEFAULT,  sizeof(uri) - 1);   uri[sizeof(uri) - 1]  = 0;
+    strncpy(muser, FLORA_MQTT_USER_DEFAULT, sizeof(muser) - 1); muser[sizeof(muser) - 1] = 0;
 
     if (flora_store_open(FLORA_NVS_NS_NET, &store) == ESP_OK) {
         flora_store_get_str(store, FLORA_NVS_WIFI_SSID, ssid, sizeof(ssid),
@@ -128,44 +142,63 @@ esp_err_t bringup_net_connect(void)
                             FLORA_WIFI_PASS_DEFAULT);
         flora_store_get_str(store, FLORA_NVS_MQTT_URI, uri, sizeof(uri),
                             FLORA_MQTT_URI_DEFAULT);
-        flora_store_get_str(store, FLORA_NVS_MQTT_USER, muser, sizeof(muser), "");
+        flora_store_get_str(store, FLORA_NVS_MQTT_USER, muser, sizeof(muser),
+                            FLORA_MQTT_USER_DEFAULT);
         flora_store_get_str(store, FLORA_NVS_MQTT_PASS, mpass, sizeof(mpass), "");
         flora_store_close(store);
     }
-    bool custom = strcmp(ssid, FLORA_WIFI_SSID_DEFAULT) != 0 ||
-                  strcmp(pass, FLORA_WIFI_PASS_DEFAULT) != 0 ||
-                  strcmp(uri,  FLORA_MQTT_URI_DEFAULT)  != 0 ||
-                  muser[0] != 0;
-    ESP_LOGI(TAG, "  siec \"%s\", broker %s%s%s (%s)", ssid, uri,
-             muser[0] ? " jako " : "", muser, custom ? "z NVS" : "domyslne");
 
     if (strcmp(ssid, "ZMIEN_MNIE") == 0) {
         ESP_LOGW(TAG, "  SSID to nadal wartosc zastepcza - uzupelnij");
         ESP_LOGW(TAG, "  flora_board.h albo zapisz do NVS pod \"%s\"", FLORA_NVS_WIFI_SSID);
         return ESP_ERR_INVALID_STATE;
     }
+    if (mpass[0] == 0) {
+        ESP_LOGW(TAG, "  brak hasla brokera w NVS - serwer odmowi, zostanie broker lokalny");
+        ESP_LOGW(TAG, "  ustaw je raz: cmd/config/mqtt_pass (z lokalnego panelu)");
+    }
 
-    esp_err_t r = try_connect(ssid, pass, uri, muser, mpass);
-    if (r == ESP_OK || !custom) {
-        if (r != ESP_OK) {
-            ESP_LOGE(TAG, "  klient ponawia w tle - polaczenie moze jeszcze dojsc");
+    /* Kolejnosc prob. Ustawienia z NVS mozna zmienic zdalnie, wiec literowka
+     * w adresie albo hasle nie moze odciac robota na dobre - naprawa bylaby
+     * tylko kablem. Kazda kolejna proba to bezpieczniejszy wariant:
+     *   1. NVS                    to, co ustawiono zdalnie
+     *   2. serwer z firmware      wkompilowane WiFi, adres i login; haslo z NVS
+     *   3. broker na Macu         bez hasel - w domu bez internetu i przy
+     *                             zgubionym hasle; stad da sie robota naprawic
+     * NVS zostaje nietkniete: po chwilowej awarii serwera nastepny restart
+     * znow zacznie od ustawien zapisanych. Identyczne proby sa pomijane. */
+    const net_attempt_t attempts[] = {
+        { "z NVS",           ssid, pass, uri, muser, mpass },
+        { "serwer domyslny", FLORA_WIFI_SSID_DEFAULT, FLORA_WIFI_PASS_DEFAULT,
+                             FLORA_MQTT_URI_DEFAULT, FLORA_MQTT_USER_DEFAULT, mpass },
+        { "broker lokalny",  FLORA_WIFI_SSID_DEFAULT, FLORA_WIFI_PASS_DEFAULT,
+                             FLORA_MQTT_URI_LOCAL, "", "" },
+    };
+    const size_t n = sizeof(attempts) / sizeof(attempts[0]);
+
+    esp_err_t r = ESP_FAIL;
+    const net_attempt_t *prev = NULL;
+    for (size_t i = 0; i < n; i++) {
+        const net_attempt_t *a = &attempts[i];
+        if (prev && same_attempt(a, prev)) {
+            continue;
         }
-        return r;
+        if (prev) {
+            ESP_LOGW(TAG, "  nie wyszlo - probuje: %s", a->label);
+            flora_mqtt_deinit();   /* ESP_ERR_INVALID_STATE, gdy nie doszlo do MQTT - bez znaczenia */
+            flora_wifi_deinit();
+        }
+        ESP_LOGI(TAG, "  [%s] siec \"%s\", broker %s%s%s", a->label, a->ssid, a->uri,
+                 a->user[0] ? " jako " : "", a->user);
+        r = try_connect(a->ssid, a->pass, a->uri, a->user, a->mpass);
+        if (r == ESP_OK) {
+            return ESP_OK;
+        }
+        prev = a;
     }
 
-    /* Ustawienia z NVS mozna zmienic zdalnie (cmd/config/...), wiec literowka
-     * w adresie albo hasle odcielaby robota od sieci na dobre - naprawa
-     * tylko kablem. Wracamy wtedy do wartosci wkompilowanych. NVS zostaje
-     * nietkniete: przy chwilowej awarii brokera nastepny restart sprobuje
-     * ustawien zapisanych ponownie. */
-    ESP_LOGW(TAG, "  ustawienia z NVS nie dzialaja - probuje wkompilowanych");
-    flora_mqtt_deinit();   /* ESP_ERR_INVALID_STATE, gdy nie doszlo do MQTT - bez znaczenia */
-    flora_wifi_deinit();
-    r = try_connect(FLORA_WIFI_SSID_DEFAULT, FLORA_WIFI_PASS_DEFAULT, FLORA_MQTT_URI_DEFAULT,
-                    "", "");
-    if (r != ESP_OK) {
-        ESP_LOGE(TAG, "  klient ponawia w tle - polaczenie moze jeszcze dojsc");
-    }
+    /* Ostatnia proba zostaje uruchomiona - ESP-MQTT ponawia w tle. */
+    ESP_LOGE(TAG, "  klient ponawia w tle - polaczenie moze jeszcze dojsc");
     return r;
 }
 

@@ -19,6 +19,8 @@
            padding: 10px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
            background: var(--bg); z-index: 1; }
   header h1 { font-size: 15px; margin: 0 12px 0 0; }
+  /* Formularz tylko dla menedzera hasel - ukladem zostaje czescia naglowka. */
+  header form { display: contents; }
   input, button, select { font: inherit; color: var(--text); background: var(--panel);
                           border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
   input[type=text] { width: 220px; }
@@ -46,17 +48,27 @@
   #log { height: 260px; overflow: auto; white-space: pre; font-size: 12px;
          background: #0c0e11; border-radius: 6px; padding: 6px; }
   #log .t { color: var(--accent); }
+  #robotlog { max-height: 200px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
+  #robotlog .E { color: var(--bad); }
+  #robotlog .W { color: var(--warn); }
   .muted { color: var(--muted); }
 </style>
 </head>
 <body>
 <header>
   <h1>Flora debug</h1>
-  <input id="url" type="text" title="adres brokera WebSocket">
-  <input id="base" type="text" title="prefiks tematow" style="width:130px">
-  <input id="user" type="text" placeholder="login" title="login brokera (pusty = bez)" style="width:90px">
-  <input id="pass" type="password" placeholder="haslo" title="haslo brokera" style="width:90px">
-  <button id="connect">Polacz</button>
+  <!-- Prawdziwy formularz logowania z atrybutami autocomplete: bez niego
+       menedzery hasel (Safari, Chrome, 1Password) nie rozpoznaja logowania
+       i nie proponuja zapisu. -->
+  <form id="login" autocomplete="on">
+    <input id="url" name="url" type="text" title="adres brokera WebSocket" autocomplete="off">
+    <input id="base" name="base" type="text" title="prefiks tematow" style="width:130px" autocomplete="off">
+    <input id="user" name="username" type="text" placeholder="login" title="login brokera (pusty = bez)"
+           style="width:90px" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <input id="pass" name="password" type="password" placeholder="haslo" title="haslo brokera"
+           style="width:90px" autocomplete="current-password">
+    <button id="connect" type="submit">Polacz</button>
+  </form>
   <span id="conn" class="pill bad">broker: rozlaczony</span>
   <span id="robot" class="pill bad">robot: ?</span>
   <span id="lastack" class="muted"></span>
@@ -106,6 +118,8 @@
     <div class="kv"></div></section>
   <section class="card" data-topic="tele/sys"><h2>System <span class="age"></span></h2>
     <div class="kv"></div></section>
+  <section class="card" data-topic="tele/boot"><h2>Start <span class="age"></span></h2>
+    <div class="kv"></div></section>
   <section class="card" data-topic="head/link"><h2>Lacze glowicy <span class="age"></span></h2>
     <div class="kv"></div></section>
   <section class="card" data-topic="head/attitude"><h2>Orientacja <span class="age"></span></h2>
@@ -144,6 +158,11 @@
     <p class="muted" style="margin:8px 0 0;font-size:12px">
       Siec i broker dzialaja po restarcie. Zly adres nie odetnie robota:
       wroci do ustawien wkompilowanych. Wartosc "-" kasuje ustawienie.</p>
+  </section>
+
+  <section class="card wide">
+    <h2>Logi robota (W i E) <button id="robotlog-clear" style="font-size:11px;padding:1px 6px">wyczysc</button></h2>
+    <div id="robotlog" class="muted">brak - robot wysyla tylko ostrzezenia i bledy</div>
   </section>
 
   <section class="card wide">
@@ -198,12 +217,24 @@ function connect() {
   client = mqtt.connect($("url").value, opts);
   client.on("connect", () => {
     setPill("conn", true, "broker: polaczony");
+    rememberCredentials();
     client.subscribe(base + "/#");
     /* Robot po restarcie wraca do domyslnej mocy - wyrownujemy z suwakiem. */
     send("drive_power", $("power").value);
   });
-  client.on("close", () => setPill("conn", false, "broker: rozlaczony"));
-  client.on("error", (e) => setPill("conn", false, "broker: " + e.message));
+  /* Blad (np. odmowa logowania) przychodzi tuz przed "close" - bez
+   * zapamietania close nadpisywal go od razu i nie bylo widac przyczyny. */
+  let lastError = "";
+  client.on("error", (e) => {
+    lastError = e.message;
+    setPill("conn", false, "broker: " + e.message);
+    /* Zle haslo nie naprawi sie samo - ponawianie tylko zasmieca log brokera. */
+    if (/not authori[sz]ed|bad user/i.test(e.message)) { client.end(true); }
+  });
+  client.on("close", () => {
+    setPill("conn", false, lastError ? "broker: " + lastError : "broker: rozlaczony");
+  });
+  client.on("connect", () => { lastError = ""; });
   client.on("message", onMessage);
 }
 
@@ -231,6 +262,10 @@ function onMessage(topic, buf) {
 
   if (rel === "status") {
     setPill("robot", text === "online", "robot: " + text);
+    return;
+  }
+  if (rel === "tele/log") {
+    try { robotLog(JSON.parse(text)); } catch (e) { /* uszkodzona linia - zostaje w surowym logu */ }
     return;
   }
   if (rel.startsWith("ack/")) {
@@ -271,7 +306,10 @@ function renderKv(el, data) {
     const b = document.createElement("span");
     a.textContent = k;
     b.textContent = fmt(v);
-    if (v === false || v === "dry" || (k === "stall" && v !== "none")) { b.style.color = "var(--bad)"; }
+    const badReset = k === "reset" && !["power_on", "software", "external", "usb"].includes(v);
+    if (v === false || v === "dry" || (k === "stall" && v !== "none") || badReset) {
+      b.style.color = "var(--bad)";
+    }
     if (v === true) { b.style.color = "var(--ok)"; }
     el.append(a, b);
   }
@@ -280,6 +318,21 @@ function renderKv(el, data) {
 function markStall(stall) {
   $("stall-clear").classList.toggle("danger", stall && stall !== "none");
 }
+
+/* ---- logi robota: najnowsze na gorze ---- */
+const ROBOTLOG_MAX = 200;
+function robotLog(d) {
+  const box = $("robotlog");
+  if (box.classList.contains("muted")) { box.classList.remove("muted"); box.replaceChildren(); }
+  const line = document.createElement("div");
+  line.className = d.lvl;
+  /* t_ms to czas od startu robota, nie zegar - robot nie zna godziny. */
+  line.textContent = new Date().toLocaleTimeString() + "  " + d.lvl + " [" +
+    (d.t_ms / 1000).toFixed(1) + " s] " + (d.tag ? d.tag + ": " : "") + d.msg;
+  box.prepend(line);
+  while (box.childElementCount > ROBOTLOG_MAX) { box.lastChild.remove(); }
+}
+$("robotlog-clear").onclick = () => $("robotlog").replaceChildren();
 
 /* ---- log surowych wiadomosci ---- */
 let paused = false;
@@ -420,8 +473,40 @@ $("reboot").onclick = () => {
   }, 3000);
 };
 
-$("connect").onclick = connect;
-connect();
+/* Wyslanie formularza (klik albo Enter w polu hasla) - strona sie nie
+ * przeladowuje, ale przegladarka widzi zdarzenie logowania. */
+$("login").addEventListener("submit", (e) => {
+  e.preventDefault();
+  connect();
+});
+
+/* Po udanym polaczeniu jawnie prosimy przegladarke o zapis hasla. Chrome
+ * i Edge obsluguja to API; Safari i Firefox go nie maja i opieraja sie na
+ * samym formularzu wyzej - tam propozycja zapisu pojawia sie po wyslaniu. */
+let credentialsStored = false;
+function rememberCredentials() {
+  if (credentialsStored || !$("user").value || !$("pass").value) { return; }
+  if (!window.PasswordCredential || !navigator.credentials) { return; }
+  credentialsStored = true;
+  try {
+    const cred = new PasswordCredential({
+      id: $("user").value,
+      password: $("pass").value,
+      name: "Flora broker (" + $("user").value + ")",
+    });
+    navigator.credentials.store(cred).catch(() => {});
+  } catch (e) { /* przegladarka odmowila - zostaje zwykly formularz */ }
+}
+/* Na serwerze broker wymaga loginu - bez niego nie ma po co laczyc sie
+ * samemu przy otwarciu strony. Lokalnie (z dysku) broker jest bez hasel. */
+/* Haslo wypelnione przez menedzer hasel strona dostaje dopiero po
+ * kliknieciu w nia, wiec przy otwarciu go jeszcze nie ma - wtedy czekamy
+ * na "Polacz" zamiast od razu dostac odmowe od brokera. */
+if (location.protocol !== "https:" || ($("user").value && $("pass").value)) {
+  connect();
+} else {
+  setPill("conn", false, "broker: wpisz login i haslo, potem Polacz");
+}
 </script>
 </body>
 </html>

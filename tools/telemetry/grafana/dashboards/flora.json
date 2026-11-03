@@ -8,44 +8,211 @@
     "from": "now-6h",
     "to": "now"
   },
+  "tags": [
+    "flora"
+  ],
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "Zasilanie szyny",
+      "type": "row",
+      "title": "Stan teraz",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Ostatni kontakt",
       "datasource": {
         "type": "influxdb",
         "uid": "flora-influx"
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 4,
+        "w": 4,
         "x": 0,
-        "y": 0
+        "y": 1
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
-          "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
-          }
+          "unit": "s",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 120
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
         },
         "overrides": []
       },
       "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
         },
-        "tooltip": {
-          "mode": "multi"
-        }
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
       },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"power\" and r._field =~ /^(v|a)$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"sys\" and r._field == \"uptime_s\")\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _value: float(v: int(v: now()) - int(v: r._time)) / 1000000000.0}))\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Ile sekund temu przyszla ostatnia telemetria systemowa (robot wysyla ja co 5 s). Pomaranczowy powyzej 30 s, czerwony powyzej 2 min."
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Bateria",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 12.0
+              },
+              {
+                "color": "green",
+                "value": 12.8
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"power\" and r._field == \"v\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Napiecie szyny 12 V z INA226. LiFePO4 4S: ponizej ~12,0 V bateria jest prawie pusta."
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Prad",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "amp",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"power\" and r._field == \"a\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -54,7 +221,689 @@
       ]
     },
     {
-      "id": 2,
+      "id": 5,
+      "type": "stat",
+      "title": "Wilgotnosc gleby",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"soil\" and r._field == \"pct\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Skala wzgledna z kalibracji czujnika (sucho/mokro), nie objetosciowa zawartosc wody."
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Woda w zbiorniku",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "true": {
+                  "text": "jest",
+                  "color": "green",
+                  "index": 0
+                },
+                "false": {
+                  "text": "brak",
+                  "color": "red",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"water\" and r._field == \"present\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Pompka",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "true": {
+                  "text": "pracuje",
+                  "color": "blue",
+                  "index": 0
+                },
+                "false": {
+                  "text": "stoi",
+                  "color": "text",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"pump\" and r._field == \"running\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Firmware",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"fw\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Wersja z tagu git hub-vX.Y.Z. Sam skrot commita = budowa bez tagu; -dirty = niezacommitowane zmiany."
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Powod ostatniego restartu",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "power_on": {
+                  "text": "wlaczenie zasilania",
+                  "color": "green",
+                  "index": 0
+                },
+                "software": {
+                  "text": "restart programowy",
+                  "color": "green",
+                  "index": 1
+                },
+                "external": {
+                  "text": "przycisk reset",
+                  "color": "green",
+                  "index": 2
+                },
+                "usb": {
+                  "text": "USB",
+                  "color": "green",
+                  "index": 3
+                },
+                "panic": {
+                  "text": "AWARIA (panic)",
+                  "color": "red",
+                  "index": 4
+                },
+                "task_wdt": {
+                  "text": "ZAWIESZENIE (task_wdt)",
+                  "color": "red",
+                  "index": 5
+                },
+                "int_wdt": {
+                  "text": "ZAWIESZENIE (int_wdt)",
+                  "color": "red",
+                  "index": 6
+                },
+                "brownout": {
+                  "text": "SPADEK NAPIECIA",
+                  "color": "red",
+                  "index": 7
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"reset\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Czerwony = poprzednie uruchomienie skonczylo sie awaria. Szczegoly w logach ponizej."
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Liczba startow",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"boots\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Licznik startow w NVS. Szybko rosnacy przy robocie 'online' = petla restartow."
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Sygnal WiFi",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dBm",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": -80
+              },
+              {
+                "color": "green",
+                "value": -70
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"sys\" and r._field == \"rssi_dbm\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Wolna pamiec",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"sys\" and r._field == \"heap\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Stale malejaca przez wiele godzin = wyciek pamieci."
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Zasilanie",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Napiecie baterii",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"power\" and r._field =~ /^v$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Jedna os na wykres: napiecie i prad maja inne skale, wiec sa osobno."
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Prad",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "amp",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"power\" and r._field =~ /^a$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "Gleba, woda, temperatura",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "panels": []
+    },
+    {
+      "id": 17,
       "type": "timeseries",
       "title": "Wilgotnosc gleby",
       "datasource": {
@@ -64,26 +913,32 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 0
+        "x": 0,
+        "y": 19
       },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
           "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
-          }
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
+          },
+          "min": 0,
+          "max": 100
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "multi",
+          "sort": "none"
         }
       },
       "targets": [
@@ -98,9 +953,9 @@
       ]
     },
     {
-      "id": 3,
+      "id": 18,
       "type": "timeseries",
-      "title": "Temperatura (DS18B20)",
+      "title": "Temperatura",
       "datasource": {
         "type": "influxdb",
         "uid": "flora-influx"
@@ -108,15 +963,17 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 8
+        "x": 12,
+        "y": 19
       },
       "fieldConfig": {
         "defaults": {
           "unit": "celsius",
           "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
           }
         },
         "overrides": []
@@ -124,71 +981,30 @@
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "multi",
+          "sort": "none"
         }
       },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"temp\" and r._field =~ /^c_\\d+$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "query": "union(tables: [\n  from(bucket: \"flora\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"temp\" and r._field =~ /^c_\\d+$/)\n    |> map(fn: (r) => ({r with _field: \"DS18B20 \" + r._field})),\n  from(bucket: \"flora\")\n    |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n    |> filter(fn: (r) => r._measurement == \"weather\" and r._field == \"t_c\")\n    |> map(fn: (r) => ({r with _field: \"BME280 (glowica)\"}))\n])\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
           }
         }
-      ]
+      ],
+      "description": "DS18B20 w bryle i BME280 w glowicy - ta sama jednostka, wiec na jednym wykresie."
     },
     {
-      "id": 4,
+      "id": 19,
       "type": "timeseries",
-      "title": "Pogoda glowicy: temperatura",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "flora-influx"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 8
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "celsius",
-          "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"weather\" and r._field =~ /^t_c$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "flora-influx"
-          }
-        }
-      ]
-    },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "Pogoda glowicy: wilgotnosc",
+      "title": "Czas pracy pompki w oknie dobowym",
       "datasource": {
         "type": "influxdb",
         "uid": "flora-influx"
@@ -197,14 +1013,16 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "humidity",
+          "unit": "ms",
           "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
           }
         },
         "overrides": []
@@ -212,201 +1030,28 @@
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "multi",
+          "sort": "none"
         }
       },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"weather\" and r._field =~ /^rh_pct$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"pump\" and r._field =~ /^window_ms$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
           }
         }
-      ]
+      ],
+      "description": "Narasta do limitu dobowego (domyslnie 10 min), potem pompka odmawia."
     },
     {
-      "id": 6,
-      "type": "timeseries",
-      "title": "Pogoda glowicy: cisnienie",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "flora-influx"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 16
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "pressurehpa",
-          "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"weather\" and r._field =~ /^p_hpa$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "flora-influx"
-          }
-        }
-      ]
-    },
-    {
-      "id": 7,
-      "type": "timeseries",
-      "title": "Natezenie swiatla N/E/S/W",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "flora-influx"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 24
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "lux",
-          "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"sun\" and r._field =~ /^lux_\\d$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "flora-influx"
-          }
-        }
-      ]
-    },
-    {
-      "id": 8,
-      "type": "timeseries",
-      "title": "Kurs",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "flora-influx"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 24
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "degree",
-          "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"attitude\" and r._field =~ /^hdg_deg$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "flora-influx"
-          }
-        }
-      ]
-    },
-    {
-      "id": 9,
-      "type": "timeseries",
-      "title": "Predkosc kol",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "flora-influx"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 32
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "suffix: mm/s",
-          "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"drive\" and r._field =~ /^v_(l|r)_mm_s$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "flora-influx"
-          }
-        }
-      ]
-    },
-    {
-      "id": 10,
+      "id": 20,
       "type": "timeseries",
       "title": "Dalmierz",
       "datasource": {
@@ -417,14 +1062,16 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 27
       },
       "fieldConfig": {
         "defaults": {
           "unit": "lengthmm",
           "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
           }
         },
         "overrides": []
@@ -432,10 +1079,12 @@
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "multi",
+          "sort": "none"
         }
       },
       "targets": [
@@ -450,9 +1099,22 @@
       ]
     },
     {
-      "id": 11,
+      "id": 21,
+      "type": "row",
+      "title": "Glowica masztu",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "panels": []
+    },
+    {
+      "id": 22,
       "type": "timeseries",
-      "title": "Pompka: czas pracy w oknie dobowym",
+      "title": "Kurs",
       "datasource": {
         "type": "influxdb",
         "uid": "flora-influx"
@@ -461,31 +1123,37 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 40
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ms",
+          "unit": "degree",
           "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
-          }
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
+          },
+          "min": 0,
+          "max": 360
         },
         "overrides": []
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "multi",
+          "sort": "none"
         }
       },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"pump\" and r._field =~ /^window_ms$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"attitude\" and r._field =~ /^hdg_deg$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -494,9 +1162,9 @@
       ]
     },
     {
-      "id": 12,
+      "id": 23,
       "type": "timeseries",
-      "title": "System: wolna pamiec i RSSI",
+      "title": "Natezenie swiatla N / E / S / W",
       "datasource": {
         "type": "influxdb",
         "uid": "flora-influx"
@@ -505,14 +1173,16 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 40
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "lux",
           "custom": {
-            "lineWidth": 1,
-            "spanNulls": 60000
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
           }
         },
         "overrides": []
@@ -520,16 +1190,414 @@
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "multi",
+          "sort": "none"
         }
       },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"sys\" and r._field =~ /^(heap|rssi_dbm)$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"sun\" and r._field =~ /^lux_\\d$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Kompas sloneczny: najjasniejszy kierunek wskazuje slonce."
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Wilgotnosc powietrza",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 44
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "humidity",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"weather\" and r._field =~ /^rh_pct$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Cisnienie",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 44
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pressurehpa",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"weather\" and r._field =~ /^p_hpa$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "row",
+      "title": "Naped",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "panels": []
+    },
+    {
+      "id": 27,
+      "type": "timeseries",
+      "title": "Predkosc kol",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 53
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: mm/s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"drive\" and r._field =~ /^v_(l|r)_mm_s$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "row",
+      "title": "Diagnostyka",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 61
+      },
+      "panels": []
+    },
+    {
+      "id": 29,
+      "type": "table",
+      "title": "Logi robota (ostrzezenia i bledy)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "description": "Linie W i E z logu ESP, wysylane na tele/log. t_ms to czas od startu robota.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lvl"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 50
+              },
+              {
+                "id": "displayName",
+                "value": "poziom"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "E": {
+                        "text": "E",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "W": {
+                        "text": "W",
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "_time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "displayName",
+                "value": "czas"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tag"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              },
+              {
+                "id": "displayName",
+                "value": "modul"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "msg"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "tresc"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          },
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"log\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> keep(columns: [\"_time\", \"lvl\", \"tag\", \"msg\"])\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 200)"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Wolna pamiec",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 72
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"sys\" and r._field =~ /^heap$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: min, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Minimum w oknie - wyciek widac po stalym spadku."
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Sygnal WiFi",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 72
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dBm",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": 60000,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"sys\" and r._field =~ /^rssi_dbm$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -538,7 +1606,6 @@
       ]
     }
   ],
-  "tags": [
-    "flora"
-  ]
+  "editable": true,
+  "graphTooltip": 1
 }

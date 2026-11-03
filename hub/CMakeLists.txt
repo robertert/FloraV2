@@ -4,6 +4,17 @@ cmake_minimum_required(VERSION 3.22)
 # include(project.cmake), inaczej komponenty nie zostana znalezione.
 set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../components")
 
+# Wersja firmware z tagu git "hub-vX.Y.Z" (tagi "server-v..." to wersje
+# serwera i nie moga trafic do firmware). Bez tagu hub-v zostaje sam skrot
+# commita, a "-dirty" zdradza niezacommitowane zmiany. Robot publikuje ja
+# po starcie na tele/boot; ta sama wersja posluzy pozniej do OTA.
+execute_process(
+    COMMAND git describe --tags --match "hub-v*" --always --dirty
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE PROJECT_VER
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(hub)
 

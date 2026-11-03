@@ -152,21 +152,31 @@
  */
 #define FLORA_WIFI_SSID_DEFAULT "iPhone Robert"
 #define FLORA_WIFI_PASS_DEFAULT "SWER1234"
-/* Mac po nazwie mDNS, nie po adresie: DHCP hotspotu przydziela adresy od
- * nowa, a nazwa zostaje. Nazwe pokazuje `scutil --get LocalHostName`.
- * Gdyby hotspot nie przepuszczal multicastu, wpisz adres (`ifconfig en0`)
- * albo zmien go zdalnie: cmd/config/mqtt_uri. */
-#define FLORA_MQTT_URI_DEFAULT "mqtt://Roberts-MacBook-Pro.local:1883"
+/* Broker docelowy: serwer (tools/server), MQTT z TLS i logowaniem.
+ * Login nie jest tajny, wiec jest tutaj. HASLA TU NIE MA: robot bierze je
+ * z NVS (cmd/config/mqtt_pass), zeby nie trafialo do repo ani do binarek
+ * rozsylanych przez OTA. Po erase-flash trzeba je wpisac raz ponownie. */
+#define FLORA_MQTT_URI_DEFAULT "mqtts://vps-91a4a09b.vps.ovh.ca:8883"
+#define FLORA_MQTT_USER_DEFAULT "robot1"
+/* Zapas: broker na Macu, bez hasel, po nazwie mDNS (DHCP hotspotu zmienia
+ * adresy, nazwa zostaje; `scutil --get LocalHostName`). Robot probuje go,
+ * gdy serwer nie odpowiada - w domu bez internetu, albo bez hasla w NVS -
+ * i wtedy da sie go naprawic z lokalnego panelu. */
+#define FLORA_MQTT_URI_LOCAL "mqtt://Roberts-MacBook-Pro.local:1883"
 #define FLORA_MQTT_BASE_TOPIC "flora/robot1"
 
 #define FLORA_NVS_NS_NET "net"
 #define FLORA_NVS_WIFI_SSID "wifi_ssid"
 #define FLORA_NVS_WIFI_PASS "wifi_pass"
 #define FLORA_NVS_MQTT_URI "mqtt_uri"
-/* Login brokera. Domyslnie pusty = bez logowania (broker na laptopie).
- * Na serwerze ustawiane zdalnie: cmd/config/mqtt_user i mqtt_pass. */
+/* Login i haslo brokera. Bez wpisu w NVS login to FLORA_MQTT_USER_DEFAULT,
+ * a hasla nie ma wcale. Ustawiane zdalnie: cmd/config/mqtt_user, mqtt_pass. */
 #define FLORA_NVS_MQTT_USER "mqtt_user"
 #define FLORA_NVS_MQTT_PASS "mqtt_pass"
+
+/* ---- Diagnostyka ---- */
+#define FLORA_NVS_NS_SYS "sys"
+#define FLORA_NVS_BOOT_COUNT "boot_count" /**< licznik startow, do wykrycia petli restartow */
 
 /* ---- Zasilanie ---- */
 #define FLORA_SHUNT_MILLIOHM 10.0f /**< INA226 z rezystorem R010 */

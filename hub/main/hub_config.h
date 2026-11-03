@@ -15,7 +15,7 @@
  *   soil_dry, soil_wet              - dzialaja od razu
  *
  * Wartosc "-" dla kluczy tekstowych kasuje klucz (wraca wartosc
- * wkompilowana), np. mqtt_user "-" wylacza logowanie do brokera.
+ * wkompilowana, czyli serwer i login robot1 z flora_board.h).
  *
  * Zly adres albo haslo nie odcinaja robota na dobre: przy nieudanym
  * polaczeniu bringup_net_connect() wraca do wartosci wkompilowanych.

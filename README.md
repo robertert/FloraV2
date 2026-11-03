@@ -68,8 +68,16 @@ przyjmuje z `flora/robot1/cmd/*` (opis w `hub/main/hub_remote.h`).
 Naped z panelu staje sam po 1,5 s bez odswiezenia komendy (dead-man),
 wiec zerwane WiFi nie zostawi jadacego robota.
 
-Broker jest szukany po nazwie mDNS (`Roberts-MacBook-Pro.local`), wiec
-zmiana adresu Maca w hotspocie nie wymaga przeflashowania.
+**Do jakiego brokera laczy sie robot** - po kolei, az ktorys odpowie:
+
+1. ustawienia z NVS (zmieniane zdalnie, patrz nizej),
+2. serwer wkompilowany w firmware (`FLORA_MQTT_URI_DEFAULT` w `flora_board.h`,
+   TLS, login `robot1`, haslo z NVS - w kodzie go nie ma),
+3. broker na Macu po nazwie mDNS (`Roberts-MacBook-Pro.local`), bez hasel.
+
+Haslo brokera trzeba wpisac raz (`cmd/config/mqtt_pass`, z lokalnego panelu,
+gdy robot jest na brokerze Maca). Przezywa zwykle flashowanie, znika dopiero
+po `erase-flash`.
 
 **Ustawienia zdalnie** (karta "Ustawienia" w panelu albo z terminala), zapis
 do NVS, siec i broker dzialaja po restarcie:
@@ -79,9 +87,21 @@ mosquitto_pub -t flora/robot1/cmd/config/mqtt_uri -m mqtt://172.20.10.14:1883
 mosquitto_pub -t flora/robot1/cmd/reboot -m 1
 ```
 
-Klucze: `wifi_ssid`, `wifi_pass`, `mqtt_uri`, `soil_dry`, `soil_wet`. Jesli
-robot nie polaczy sie z ustawieniami z NVS, wraca do wkompilowanych - zly
-adres nie wymaga podlaczania kabla.
+Klucze: `wifi_ssid`, `wifi_pass`, `mqtt_uri`, `mqtt_user`, `mqtt_pass`,
+`soil_dry`, `soil_wet`; wartosc `-` kasuje ustawienie. Zly adres albo haslo
+w NVS nie wymaga podlaczania kabla - robot przejdzie do kolejnych prob.
+
+**Diagnostyka zdalna** (`hub/main/hub_diag.c`):
+
+- `tele/log` - ostrzezenia i bledy z logu ESP (poziomy W i E). Kolejka
+  trzyma je takze bez polaczenia, wiec bledy z uruchamiania i z przerwy w
+  sieci wychodza po polaczeniu. Konsola USB dostaje wszystko jak dotad.
+- `tele/boot` (retain) - wersja firmware, data budowania, powod ostatniego
+  restartu (`panic`, `task_wdt`, `brownout`... = awaria) i licznik startow.
+
+Wersja firmware pochodzi z tagu `hub-vX.Y.Z` (`git tag hub-v0.1.0`); bez
+niego jest skrot commita. Tagi `server-v...` sa dla serwera i do firmware
+nie trafiaja.
 
 **Historia** (Telegraf + InfluxDB + Grafana w Dockerze):
 

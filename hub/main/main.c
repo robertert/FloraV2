@@ -21,6 +21,7 @@
 #include "bringup_drive.h"
 #include "bringup_net.h"
 #include "bringup_power.h"
+#include "hub_diag.h"
 #include "hub_links.h"
 #include "hub_remote.h"
 #include "hub_telemetry.h"
@@ -96,6 +97,11 @@ void app_main(void)
     /* NVS jako pierwsze: trzymamy w nim kalibracje, a dodatkowo potrzebuja
      * go WiFi (kalibracja PHY) i BLE, gdy dojda. Wywolanie jest idempotentne. */
     ESP_ERROR_CHECK(flora_store_init());
+    /* Zaraz po NVS: od tej chwili ostrzezenia i bledy czekaja w kolejce na
+     * wyslanie przez MQTT, takze te z inicjalizacji sprzetu nizej. */
+    if (hub_diag_init() != ESP_OK) {
+        ESP_LOGW(TAG, "diagnostyka zdalna niedostepna - logi tylko przez USB");
+    }
     flora_store_report_space();
 
     ina226_setup();

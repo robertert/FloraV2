@@ -33,6 +33,7 @@
 
 #include "hub_telemetry.h"
 #include "hub_config.h"
+#include "hub_diag.h"
 #include "hub_links.h"
 #include "flora_board.h"
 #include "flora_encoders.h"
@@ -517,6 +518,7 @@ static void telemetry_task(void *arg)
         if (!was_connected) {
             was_connected = true;
             hub_config_publish();
+            hub_diag_publish_boot();
         }
 
         if (DUE(tick, 5000)) { pub_sys(); }

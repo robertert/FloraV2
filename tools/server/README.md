@@ -56,9 +56,13 @@ nie maja w `docker-compose.yml` zadnych `ports:`.
 5. **Odnawianie certyfikatu dla brokera** (Caddy odnawia swoj sam,
    mosquitto trzeba powiadomic):
    ```sh
-   sudo crontab -e
-   0 4 * * 1  /opt/flora/tools/server/renew-certs.sh >> /var/log/flora-certs.log 2>&1
+   echo '0 4 * * 1 /opt/flora/tools/server/renew-certs.sh >> /var/log/flora-certs.log 2>&1' \
+     | sudo crontab -
+   sudo crontab -l                                # sprawdzenie
+   sudo /opt/flora/tools/server/renew-certs.sh    # reczny test
    ```
+   Uwaga: `crontab -` ZASTEPUJE caly crontab roota. Na swiezym serwerze jest
+   pusty; jesli juz cos w nim jest, dopisz linie przez `sudo crontab -e`.
 6. **CI** - sekcja nizej. Od tej chwili kazdy tag wdraza sie sam.
 
 ## CI: wdrozenie z tagu
@@ -85,13 +89,25 @@ sudo chmod 440 /etc/sudoers.d/flora-deploy && sudo visudo -c
 ```sh
 ssh-keygen -t ed25519 -f ~/.ssh/flora_ci -N "" -C flora-ci
 ```
-Na serwerze w `/home/deploy/.ssh/authorized_keys` (katalog 700, plik 600,
-wlasciciel `deploy`) jedna linia, z kluczem publicznym z `~/.ssh/flora_ci.pub`:
-```
+Na serwerze jedna linia w `authorized_keys` uzytkownika `deploy`, z kluczem
+publicznym z `~/.ssh/flora_ci.pub` w miejscu `ssh-ed25519 AAAA... flora-ci`
+(`adduser` nie tworzy katalogu `.ssh`, stad `install -d`):
+```sh
+sudo install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+sudo tee /home/deploy/.ssh/authorized_keys > /dev/null <<'EOF'
 command="sudo /usr/local/bin/flora-deploy \"$SSH_ORIGINAL_COMMAND\"",restrict ssh-ed25519 AAAA... flora-ci
+EOF
+sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
+sudo chmod 600 /home/deploy/.ssh/authorized_keys
 ```
-`command=` wymusza komende niezaleznie od tego, co wysle klient, a
-`restrict` wylacza terminal, przekierowania portow i reszte.
+`'EOF'` w apostrofach, inaczej powloka podstawi pusty `$SSH_ORIGINAL_COMMAND`
+od razu przy zapisie. `command=` wymusza komende niezaleznie od tego, co
+wysle klient, a `restrict` wylacza terminal, przekierowania portow i reszte.
+
+Test z Maca - ma odpowiedziec `flora-deploy: zly tag "test"`:
+```sh
+ssh -i ~/.ssh/flora_ci -o IdentitiesOnly=yes deploy@<adres> test
+```
 
 **Na GitHubie:** Settings > Environments > New environment `production`
 (mozna tam wlaczyc "Required reviewers", wtedy kazde wdrozenie czeka na
@@ -114,22 +130,25 @@ sudo flora-deploy v1.1.0 < /dev/null    # powrot do starszej wersji (bez "server
 grep FLORA_VERSION /opt/flora/tools/server/.env   # co teraz dziala
 ```
 
-## Przelaczenie robota na serwer
+## Robot a serwer
 
-Z panelu na laptopie, dopoki robot jest jeszcze podlaczony do lokalnego
-brokera (karta "Ustawienia"), albo z terminala:
+Adres serwera i login `robot1` sa wkompilowane w firmware
+(`FLORA_MQTT_URI_DEFAULT` w `components/flora_board/include/flora_board.h`).
+Haslo NIE jest - robot czyta je z NVS. Wpisuje sie je raz, z lokalnego panelu
+na Macu, gdy robot nie ma jeszcze hasla i laczy sie z brokerem lokalnym:
 
 ```sh
-B=flora/robot1/cmd
-mosquitto_pub -t $B/config/mqtt_user -m robot1
-mosquitto_pub -t $B/config/mqtt_pass -m <MQTT_PASS_ROBOT z .env>
-mosquitto_pub -t $B/config/mqtt_uri  -m mqtts://<domena>:8883
-mosquitto_pub -t $B/reboot -m 1
+mosquitto_pub -t flora/robot1/cmd/config/mqtt_pass -m <MQTT_PASS_ROBOT z .env>
+mosquitto_pub -t flora/robot1/cmd/reboot -m 1
 ```
 
-Gdy robot nie polaczy sie z serwerem, wraca do ustawien wkompilowanych,
-czyli do brokera na laptopie. Powrot recznie: `mqtt_uri`, `mqtt_user` i
-`mqtt_pass` ustawione na `-`, potem `reboot`.
+Kolejnosc polaczen przy starcie: ustawienia z NVS, potem serwer z firmware,
+na koncu broker na Macu (bez hasel). Robot bez dzialajacego serwera albo
+hasla wyladuje wiec na brokerze lokalnym i da sie go naprawic z panelu.
+W najgorszym razie start sieci trwa wtedy do ok. 1,5 min (trzy proby).
+
+Zmiana adresu serwera bez flashowania: `cmd/config/mqtt_uri`, potem `reboot`.
+Powrot do wartosci z firmware: ten sam klucz ustawiony na `-`.
 
 ## Konta brokera (`mosquitto/acl`)
 

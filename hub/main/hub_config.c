@@ -102,17 +102,18 @@ esp_err_t hub_config_set(const char *key, const char *value)
 
 void hub_config_publish(void)
 {
-    char ssid[33], uri[96], muser[33] = "";
+    char ssid[33], uri[96], muser[33];
     int32_t dry = FLORA_SOIL_RAW_DRY, wet = FLORA_SOIL_RAW_WET;
 
     strncpy(ssid, FLORA_WIFI_SSID_DEFAULT, sizeof ssid - 1); ssid[sizeof ssid - 1] = 0;
     strncpy(uri, FLORA_MQTT_URI_DEFAULT, sizeof uri - 1);    uri[sizeof uri - 1] = 0;
+    strncpy(muser, FLORA_MQTT_USER_DEFAULT, sizeof muser - 1); muser[sizeof muser - 1] = 0;
 
     flora_store_t h;
     if (flora_store_open(FLORA_NVS_NS_NET, &h) == ESP_OK) {
         flora_store_get_str(h, FLORA_NVS_WIFI_SSID, ssid, sizeof ssid, FLORA_WIFI_SSID_DEFAULT);
         flora_store_get_str(h, FLORA_NVS_MQTT_URI, uri, sizeof uri, FLORA_MQTT_URI_DEFAULT);
-        flora_store_get_str(h, FLORA_NVS_MQTT_USER, muser, sizeof muser, "");
+        flora_store_get_str(h, FLORA_NVS_MQTT_USER, muser, sizeof muser, FLORA_MQTT_USER_DEFAULT);
         flora_store_close(h);
     }
     if (flora_store_open(FLORA_NVS_NS_CALIB, &h) == ESP_OK) {
