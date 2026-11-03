@@ -45,11 +45,15 @@ for pair in "robot1:$MQTT_PASS_ROBOT" "telegraf:$MQTT_PASS_TELEGRAF" "panel:$MQT
     docker run --rm -v "$PWD/mosquitto:/m" "$MOSQUITTO_IMAGE" \
         mosquitto_passwd -b /m/passwd "${pair%%:*}" "${pair#*:}"
 done
-# Broker w kontenerze dziala jako uzytkownik 1883. Na Linuksie plik musi
-# do niego nalezec; na macOS Docker Desktop sam mapuje uprawnienia.
+# Kontenery dzialaja jako wlasni uzytkownicy, nie root: mosquitto jako 1883,
+# Grafana jako 472. Na Linuksie ich pliki i katalogi danych musza do nich
+# nalezec, inaczej proces nie zapisze danych i wylaczy sie zaraz po starcie
+# (Grafana: "Restarting (1)"). Na macOS Docker Desktop sam mapuje uprawnienia,
+# dlatego proba lokalna tego nie wylapie. InfluxDB poprawia uprawnienia sam.
 if [ "$(id -u)" = 0 ]; then
     chown 1883:1883 mosquitto/passwd
     chown -R 1883:1883 data/mosquitto
+    chown -R 472:0 data/grafana
 fi
 
 # Obrazy flora-* sa w prywatnym rejestrze GitHuba - serwer musi byc
