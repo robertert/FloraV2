@@ -10,6 +10,13 @@
  * plaski JSON z jednostkami w nazwach pol, zeby dalo sie je pozniej wprost
  * zaciagnac do bazy szeregow czasowych (Telegraf, parser json).
  *
+ * NAZWY POL TRUE/FALSE I TEKSTOWYCH MUSZA BYC UNIKALNE w calej telemetrii:
+ * Telegraf odrzuca takie wartosci, chyba ze nazwa pola jest na liscie
+ * json_string_fields w tools/telemetry/telegraf.conf - a lista dziala po
+ * nazwie, wiec przy wspolnej nazwie z polem liczbowym jedno z nich
+ * zapisaloby sie w zlym typie.
+ * Nowe pole logiczne albo tekstowe = dopisz je tam.
+ *
  * Publikujemy tylko przy polaczonym brokerze. Bez tego kazdy takt
  * produkowalby ostrzezenie flora_mqtt i log bylby nieczytelny.
  */
@@ -25,6 +32,7 @@
 #include "esp_wifi.h"
 
 #include "hub_telemetry.h"
+#include "hub_config.h"
 #include "hub_links.h"
 #include "flora_board.h"
 #include "flora_encoders.h"
@@ -347,7 +355,7 @@ static void temp_step(bool due)
 
 static void pub_water(void)
 {
-    flora_mqtt_publish_fmt("tele/water", 0, false, "{\"present\":%s,\"raw\":%s}",
+    flora_mqtt_publish_fmt("tele/water", 0, false, "{\"present\":%s,\"pin\":%s}",
                            flora_level_water_present(s_level) ? "true" : "false",
                            flora_level_raw(s_level) ? "true" : "false");
 }
@@ -480,7 +488,7 @@ static void pub_head(bool attitude_due)
     if (hub_links_get(FLORA_MSG_CAM_STATUS, &c, sizeof c, &seq_cam)) {
         flora_mqtt_publish_fmt("head/cam", 0, false,
                                "{\"uptime_s\":%" PRIu32 ",\"frames\":%u,\"errors\":%u,"
-                               "\"ok\":%s}",
+                               "\"camera_ok\":%s}",
                                c.uptime_ms / 1000, c.frames_processed, c.error_count,
                                c.camera_ok ? "true" : "false");
     }
@@ -496,11 +504,19 @@ static void telemetry_task(void *arg)
     TickType_t wake = xTaskGetTickCount();
     uint32_t tick = 0;
     bool last_water = false, last_mast = false;
+    bool was_connected = false;
 
     for (;; tick++) {
         vTaskDelayUntil(&wake, pdMS_TO_TICKS(TICK_MS));
         if (!flora_mqtt_is_connected()) {
+            was_connected = false;
             continue;
+        }
+        /* Po kazdym (ponownym) polaczeniu - broker mogl byc zrestartowany
+         * bez trwalego zapisu i zgubic wiadomosc z flaga retain. */
+        if (!was_connected) {
+            was_connected = true;
+            hub_config_publish();
         }
 
         if (DUE(tick, 5000)) { pub_sys(); }

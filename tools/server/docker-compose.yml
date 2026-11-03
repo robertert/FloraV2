@@ -1,0 +1,82 @@
+# Serwer robota: broker MQTT z TLS + historia + panel, wszystko za HTTPS.
+#
+# Na swiat wystawione tylko:
+#   443   Caddy: Grafana (/), panel debugowy (/panel/), MQTT po WebSocket (/mqtt)
+#   80    Caddy: wylacznie dla Let's Encrypt i przekierowania na HTTPS
+#   8883  mosquitto: MQTT z TLS, tu laczy sie robot
+# InfluxDB i zwykle MQTT (1883) zostaja w sieci Dockera.
+#
+# Uruchomienie: patrz README.md obok. Wymaga pliku .env (setup.sh go tworzy).
+#
+# Konfiguracja (Caddyfile, mosquitto.conf, acl, telegraf.conf, Grafana, panel)
+# jest wbudowana w obrazy flora-*, budowane przez CI z tagu git
+# (.github/workflows/deploy.yml). FLORA_VERSION w .env wybiera wersje;
+# wdrozenie i powrot do starszej robi flora-deploy. Sekrety (.env, passwd,
+# certyfikaty) zostaja na serwerze i sa montowane, nigdy w obrazie.
+
+services:
+  caddy:
+    image: ${FLORA_REGISTRY:-ghcr.io/robertert}/flora-caddy:${FLORA_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Katalog na hoscie, nie wolumen: renew-certs.sh kopiuje stad
+      # certyfikat dla mosquitto.
+      - ./data/caddy:/data
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+
+  mosquitto:
+    image: ${FLORA_REGISTRY:-ghcr.io/robertert}/flora-mosquitto:${FLORA_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "8883:8883"
+    volumes:
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./certs:/mosquitto/certs:ro
+      - ./data/mosquitto:/mosquitto/data
+
+  influxdb:
+    image: influxdb:2.7.10
+    restart: unless-stopped
+    volumes:
+      - ./data/influxdb:/var/lib/influxdb2
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: flora
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: flora
+      DOCKER_INFLUXDB_INIT_BUCKET: flora
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN}
+
+  # Konfiguracja Telegrafa i Grafany wspolna z wersja na laptopa
+  # (tools/telemetry) - obrazy kopiuja ja stamtad przy budowaniu.
+  telegraf:
+    image: ${FLORA_REGISTRY:-ghcr.io/robertert}/flora-telegraf:${FLORA_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+      - mosquitto
+    environment:
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      MQTT_SERVER: tcp://mosquitto:1883
+      MQTT_USER: telegraf
+      MQTT_PASS: ${MQTT_PASS_TELEGRAF}
+
+  grafana:
+    image: ${FLORA_REGISTRY:-ghcr.io/robertert}/flora-grafana:${FLORA_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+    # Bez portu na zewnatrz - ruch idzie przez Caddy.
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_SERVER_ROOT_URL: https://${DOMAIN}/
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      INFLUX_TOKEN: ${INFLUX_TOKEN}

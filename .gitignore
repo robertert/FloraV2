@@ -23,3 +23,12 @@ __pycache__/
 # Program weryfikujacy port algorytmu na komputerze - budowany z zrodel
 # jednym poleceniem cc, patrz components/flora_ground/host/.
 components/flora_ground/host/runner
+
+# Hasla i token stacku historii (tools/telemetry)
+tools/telemetry/.env
+
+# Serwer robota: sekrety, dane i certyfikaty (tools/server)
+tools/server/.env
+tools/server/data/
+tools/server/certs/
+tools/server/mosquitto/passwd

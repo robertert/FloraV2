@@ -18,5 +18,7 @@
  *   cmd/pump         on | off | liczba ms
  *   cmd/mast         on | off
  *   cmd/stall_clear  dowolny
+ *   cmd/reboot       dowolny, restart po 0,5 s
+ *   cmd/config/<k>   zapis ustawienia do NVS, patrz hub_config.h
  */
 esp_err_t hub_remote_start(void);

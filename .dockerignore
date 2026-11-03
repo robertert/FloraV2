@@ -1,0 +1,13 @@
+# Obrazy serwera buduja sie z korzenia repo, ale potrzebuja tylko kilku
+# plikow konfiguracji. Wszystko inne jest wykluczone: build/ i
+# managed_components/ to setki MB, a .env, passwd i certyfikaty z proby
+# lokalnej nie moga trafic do obrazu.
+*
+!tools/server/Caddyfile
+!tools/server/mosquitto/mosquitto.conf
+!tools/server/mosquitto/acl
+!tools/telemetry/telegraf.conf
+!tools/telemetry/grafana/
+!tools/dashboard/
+# Lokalna konfiguracja brokera z laptopa - nie dla publicznego panelu.
+tools/dashboard/mosquitto.conf

@@ -58,36 +58,11 @@ static void on_command(const char *topic, size_t topic_len,
              (int)topic_len, topic, (int)data_len, data);
 }
 
-esp_err_t bringup_net_connect(void)
+/** Jedna proba: WiFi, potem MQTT. Zostawia dzialajacych klientow nawet
+ *  przy ESP_ERR_TIMEOUT brokera, bo ESP-MQTT ponawia w tle. */
+static esp_err_t try_connect(const char *ssid, const char *pass, const char *uri,
+                             const char *mqtt_user, const char *mqtt_pass)
 {
-    /* --- dane dostepowe --- */
-    char ssid[33], pass[65], uri[96];
-    flora_store_t store = NULL;
-    bool from_nvs = false;
-
-    strncpy(ssid, FLORA_WIFI_SSID_DEFAULT, sizeof(ssid) - 1); ssid[sizeof(ssid) - 1] = 0;
-    strncpy(pass, FLORA_WIFI_PASS_DEFAULT, sizeof(pass) - 1); pass[sizeof(pass) - 1] = 0;
-    strncpy(uri,  FLORA_MQTT_URI_DEFAULT,  sizeof(uri) - 1);  uri[sizeof(uri) - 1]  = 0;
-
-    if (flora_store_open(FLORA_NVS_NS_NET, &store) == ESP_OK) {
-        flora_store_get_str(store, FLORA_NVS_WIFI_SSID, ssid, sizeof(ssid),
-                            FLORA_WIFI_SSID_DEFAULT);
-        flora_store_get_str(store, FLORA_NVS_WIFI_PASS, pass, sizeof(pass),
-                            FLORA_WIFI_PASS_DEFAULT);
-        flora_store_get_str(store, FLORA_NVS_MQTT_URI, uri, sizeof(uri),
-                            FLORA_MQTT_URI_DEFAULT);
-        from_nvs = flora_store_has(store, FLORA_NVS_WIFI_SSID);
-        flora_store_close(store);
-    }
-    ESP_LOGI(TAG, "  siec \"%s\", broker %s (%s)", ssid, uri,
-             from_nvs ? "z NVS" : "domyslne, nie zapisane");
-
-    if (strcmp(ssid, "ZMIEN_MNIE") == 0) {
-        ESP_LOGW(TAG, "  SSID to nadal wartosc zastepcza - uzupelnij");
-        ESP_LOGW(TAG, "  flora_board.h albo zapisz do NVS pod \"%s\"", FLORA_NVS_WIFI_SSID);
-        return ESP_ERR_INVALID_STATE;
-    }
-
     /* --- WiFi --- */
     flora_wifi_cfg_t wcfg = FLORA_WIFI_DEFAULT_CFG();
     strncpy(wcfg.ssid, ssid, sizeof(wcfg.ssid) - 1);
@@ -102,8 +77,7 @@ esp_err_t bringup_net_connect(void)
     ESP_LOGI(TAG, "  czekam na adres (do 20 s)...");
     esp_err_t r = flora_wifi_wait_connected(20000);
     if (r != ESP_OK) {
-        ESP_LOGE(TAG, "  brak polaczenia: %s", esp_err_to_name(r));
-        ESP_LOGE(TAG, "  ponawianie dziala dalej w tle - log pokaze kolejne proby");
+        ESP_LOGE(TAG, "  brak polaczenia z \"%s\": %s", ssid, esp_err_to_name(r));
         return r;
     }
 
@@ -112,6 +86,9 @@ esp_err_t bringup_net_connect(void)
     mcfg.uri        = uri;
     mcfg.base_topic = FLORA_MQTT_BASE_TOPIC;
     mcfg.client_id  = "flora-hub";
+    /* Pusty login = broker bez uwierzytelniania. */
+    mcfg.username   = mqtt_user[0] ? mqtt_user : NULL;
+    mcfg.password   = mqtt_user[0] ? mqtt_pass : NULL;
     mcfg.on_state   = on_mqtt_state;
 
     if (flora_mqtt_init(&mcfg) != ESP_OK) {
@@ -119,7 +96,9 @@ esp_err_t bringup_net_connect(void)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "  czekam na brokera (do 10 s)...");
+    /* Nazwa .local rozwiazuje sie zapytaniem mDNS wbudowanym w lwIP
+     * (CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES), bez osobnego komponentu. */
+    ESP_LOGI(TAG, "  czekam na brokera %s (do 10 s)...", uri);
     for (int i = 0; i < 100 && !flora_mqtt_is_connected(); i++) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -127,10 +106,67 @@ esp_err_t bringup_net_connect(void)
     if (!flora_mqtt_is_connected()) {
         ESP_LOGE(TAG, "  broker nieosiagalny pod %s", uri);
         ESP_LOGE(TAG, "  sprawdz adres, port i czy broker nasluchuje poza localhostem");
-        ESP_LOGE(TAG, "  klient ponawia w tle - polaczenie moze jeszcze dojsc");
         return ESP_ERR_TIMEOUT;
     }
     return ESP_OK;
+}
+
+esp_err_t bringup_net_connect(void)
+{
+    /* --- dane dostepowe --- */
+    char ssid[33], pass[65], uri[96], muser[33] = "", mpass[65] = "";
+    flora_store_t store = NULL;
+
+    strncpy(ssid, FLORA_WIFI_SSID_DEFAULT, sizeof(ssid) - 1); ssid[sizeof(ssid) - 1] = 0;
+    strncpy(pass, FLORA_WIFI_PASS_DEFAULT, sizeof(pass) - 1); pass[sizeof(pass) - 1] = 0;
+    strncpy(uri,  FLORA_MQTT_URI_DEFAULT,  sizeof(uri) - 1);  uri[sizeof(uri) - 1]  = 0;
+
+    if (flora_store_open(FLORA_NVS_NS_NET, &store) == ESP_OK) {
+        flora_store_get_str(store, FLORA_NVS_WIFI_SSID, ssid, sizeof(ssid),
+                            FLORA_WIFI_SSID_DEFAULT);
+        flora_store_get_str(store, FLORA_NVS_WIFI_PASS, pass, sizeof(pass),
+                            FLORA_WIFI_PASS_DEFAULT);
+        flora_store_get_str(store, FLORA_NVS_MQTT_URI, uri, sizeof(uri),
+                            FLORA_MQTT_URI_DEFAULT);
+        flora_store_get_str(store, FLORA_NVS_MQTT_USER, muser, sizeof(muser), "");
+        flora_store_get_str(store, FLORA_NVS_MQTT_PASS, mpass, sizeof(mpass), "");
+        flora_store_close(store);
+    }
+    bool custom = strcmp(ssid, FLORA_WIFI_SSID_DEFAULT) != 0 ||
+                  strcmp(pass, FLORA_WIFI_PASS_DEFAULT) != 0 ||
+                  strcmp(uri,  FLORA_MQTT_URI_DEFAULT)  != 0 ||
+                  muser[0] != 0;
+    ESP_LOGI(TAG, "  siec \"%s\", broker %s%s%s (%s)", ssid, uri,
+             muser[0] ? " jako " : "", muser, custom ? "z NVS" : "domyslne");
+
+    if (strcmp(ssid, "ZMIEN_MNIE") == 0) {
+        ESP_LOGW(TAG, "  SSID to nadal wartosc zastepcza - uzupelnij");
+        ESP_LOGW(TAG, "  flora_board.h albo zapisz do NVS pod \"%s\"", FLORA_NVS_WIFI_SSID);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t r = try_connect(ssid, pass, uri, muser, mpass);
+    if (r == ESP_OK || !custom) {
+        if (r != ESP_OK) {
+            ESP_LOGE(TAG, "  klient ponawia w tle - polaczenie moze jeszcze dojsc");
+        }
+        return r;
+    }
+
+    /* Ustawienia z NVS mozna zmienic zdalnie (cmd/config/...), wiec literowka
+     * w adresie albo hasle odcielaby robota od sieci na dobre - naprawa
+     * tylko kablem. Wracamy wtedy do wartosci wkompilowanych. NVS zostaje
+     * nietkniete: przy chwilowej awarii brokera nastepny restart sprobuje
+     * ustawien zapisanych ponownie. */
+    ESP_LOGW(TAG, "  ustawienia z NVS nie dzialaja - probuje wkompilowanych");
+    flora_mqtt_deinit();   /* ESP_ERR_INVALID_STATE, gdy nie doszlo do MQTT - bez znaczenia */
+    flora_wifi_deinit();
+    r = try_connect(FLORA_WIFI_SSID_DEFAULT, FLORA_WIFI_PASS_DEFAULT, FLORA_MQTT_URI_DEFAULT,
+                    "", "");
+    if (r != ESP_OK) {
+        ESP_LOGE(TAG, "  klient ponawia w tle - polaczenie moze jeszcze dojsc");
+    }
+    return r;
 }
 
 void bringup_net_run(void)

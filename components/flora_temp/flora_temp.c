@@ -67,8 +67,16 @@ esp_err_t flora_temp_init(const flora_temp_cfg_t *cfg)
     esp_err_t search;
     do {
         search = onewire_device_iter_get_next(iter, &found);
+        if (search == ESP_ERR_NOT_FOUND) {
+            break;
+        }
         if (search != ESP_OK) {
-            continue;
+            /* Kazdy inny blad konczy skan. Bez tego pusta magistrala (linia
+             * bez podciagniecia, brak czujnika) dawala nieskonczona petle
+             * nieudanych resetow - kanal RMT jest po pierwszym juz wylaczony,
+             * wiec ponawianie nie ma szans - i watchdog restartowal uklad. */
+            ESP_LOGW(TAG, "skan 1-Wire przerwany: %s", esp_err_to_name(search));
+            break;
         }
         if (s_t.count >= FLORA_TEMP_MAX_SENSORS) {
             ESP_LOGW(TAG, "wiecej niz %d czujnikow na magistrali, reszte pomijam",

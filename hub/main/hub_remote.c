@@ -17,8 +17,10 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 
+#include "hub_config.h"
 #include "hub_remote.h"
 #include "hub_telemetry.h"
 #include "flora_board.h"
@@ -39,6 +41,7 @@ static volatile int64_t s_drive_last_us;
 static volatile bool    s_driving;
 
 static esp_timer_handle_t s_deadman;
+static esp_timer_handle_t s_reboot;
 
 static void ack(const char *cmd, esp_err_t err)
 {
@@ -119,6 +122,28 @@ static esp_err_t cmd_mast(const char *arg)
     return ESP_ERR_INVALID_ARG;
 }
 
+static void reboot_now(void *arg)
+{
+    esp_restart();
+}
+
+/** Restart z opoznieniem, zeby ack zdazyl wyjsc do brokera. */
+static esp_err_t cmd_reboot(void)
+{
+    const esp_timer_create_args_t args = { .callback = reboot_now, .name = "reboot" };
+    if (!s_reboot) {
+        esp_err_t err = esp_timer_create(&args, &s_reboot);
+        if (err != ESP_OK) {
+            return err;
+        }
+    }
+    flora_motors_stop();
+    flora_pump_stop();
+    ESP_LOGW(TAG, "restart na zadanie z brokera");
+    esp_timer_stop(s_reboot);   /* powtorzona komenda nie przesuwa restartu w nieskonczonosc */
+    return esp_timer_start_once(s_reboot, 500 * 1000);
+}
+
 static void on_cmd(const char *topic, size_t topic_len,
                    const char *data, size_t data_len, void *ctx)
 {
@@ -132,8 +157,10 @@ static void on_cmd(const char *topic, size_t topic_len,
     cmd[topic_len - prefix] = 0;
 
     /* Dane nie sa zakonczone zerem; przycinamy tez biale znaki z konca,
-     * bo mosquitto_pub -m z echo latwo dokleja znak nowej linii. */
-    char arg[32];
+     * bo mosquitto_pub -m z echo latwo dokleja znak nowej linii.
+     * Bufor miesci najdluzsza wartosc ustawien (mqtt_uri, 95 znakow);
+     * dluzsza zostanie przycieta i odrzucona przez walidacje. */
+    char arg[100];
     size_t n = data_len < sizeof arg - 1 ? data_len : sizeof arg - 1;
     memcpy(arg, data, n);
     while (n > 0 && (arg[n - 1] == '\n' || arg[n - 1] == '\r' || arg[n - 1] == ' ')) {
@@ -147,11 +174,16 @@ static void on_cmd(const char *topic, size_t topic_len,
     else if (strcmp(cmd, "pump") == 0)        { err = cmd_pump(arg); }
     else if (strcmp(cmd, "mast") == 0)        { err = cmd_mast(arg); }
     else if (strcmp(cmd, "stall_clear") == 0) { err = flora_motors_clear_stall(); }
+    else if (strcmp(cmd, "reboot") == 0)      { err = cmd_reboot(); }
+    else if (strncmp(cmd, "config/", 7) == 0) { err = hub_config_set(cmd + 7, arg); }
     else                                      { err = ESP_ERR_NOT_SUPPORTED; }
 
-    /* Powtarzane co 300 ms cmd/drive nie zasmieca logu. */
-    if (err != ESP_OK || strcmp(cmd, "drive") != 0) {
-        ESP_LOGI(TAG, "%s = \"%s\" -> %s", cmd, arg, esp_err_to_name(err));
+    /* Powtarzane co 300 ms cmd/drive nie zasmieca logu, a ustawienia
+     * loguje hub_config bez hasla. */
+    bool quiet = strcmp(cmd, "drive") == 0 || strncmp(cmd, "config/", 7) == 0;
+    if (err != ESP_OK || !quiet) {
+        ESP_LOGI(TAG, "%s = \"%s\" -> %s", cmd,
+                 strstr(cmd, "_pass") ? "***" : arg, esp_err_to_name(err));
     }
     ack(cmd, err);
 }

@@ -68,6 +68,32 @@ przyjmuje z `flora/robot1/cmd/*` (opis w `hub/main/hub_remote.h`).
 Naped z panelu staje sam po 1,5 s bez odswiezenia komendy (dead-man),
 wiec zerwane WiFi nie zostawi jadacego robota.
 
+Broker jest szukany po nazwie mDNS (`Roberts-MacBook-Pro.local`), wiec
+zmiana adresu Maca w hotspocie nie wymaga przeflashowania.
+
+**Ustawienia zdalnie** (karta "Ustawienia" w panelu albo z terminala), zapis
+do NVS, siec i broker dzialaja po restarcie:
+
+```sh
+mosquitto_pub -t flora/robot1/cmd/config/mqtt_uri -m mqtt://172.20.10.14:1883
+mosquitto_pub -t flora/robot1/cmd/reboot -m 1
+```
+
+Klucze: `wifi_ssid`, `wifi_pass`, `mqtt_uri`, `soil_dry`, `soil_wet`. Jesli
+robot nie polaczy sie z ustawieniami z NVS, wraca do wkompilowanych - zly
+adres nie wymaga podlaczania kabla.
+
+**Historia** (Telegraf + InfluxDB + Grafana w Dockerze):
+
+```sh
+cd tools/telemetry && docker compose up -d
+```
+
+Grafana pod http://localhost:3001 (admin / flora-admin), dashboard
+"Flora robot". Wersja na serwer (broker z TLS i haslami, Grafana i
+panel za HTTPS): `tools/server/README.md`. Hasla domyslne sa tylko do laptopa - na serwer ustaw wlasne
+w `tools/telemetry/.env` (`INFLUX_PASSWORD`, `INFLUX_TOKEN`, `GRAFANA_PASSWORD`).
+
 ## Podglad kamery i zbieranie danych
 
 Glowica w trybie podgladu stawia serwer HTTP i nadaje strumien MJPEG. Adres

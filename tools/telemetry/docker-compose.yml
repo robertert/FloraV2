@@ -1,0 +1,65 @@
+# Historia telemetrii: MQTT -> Telegraf -> InfluxDB -> Grafana.
+#
+#   cd tools/telemetry && docker compose up -d
+#   Grafana:  http://localhost:3001   (admin / flora-admin)
+#   InfluxDB: http://localhost:8086   (flora / flora-admin)
+#
+# Broker zostaje poza kontenerami (tools/dashboard/mosquitto.conf), bo robot
+# i panel lacza sie z nim i bez historii. Telegraf siega do niego przez
+# host.docker.internal.
+#
+# Hasla i token to wartosci domyslne do pracy na wlasnym laptopie. Przed
+# postawieniem tego na serwerze w internecie ustaw wlasne w pliku .env obok
+# (te same nazwy zmiennych) - inaczej kazdy zna token do bazy.
+
+services:
+  influxdb:
+    image: influxdb:2.7.10
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    volumes:
+      - influx-data:/var/lib/influxdb2
+    environment:
+      # Jednorazowa konfiguracja przy pierwszym starcie, na pustym wolumenie.
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: flora
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD:-flora-admin}
+      DOCKER_INFLUXDB_INIT_ORG: flora
+      DOCKER_INFLUXDB_INIT_BUCKET: flora
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:-flora-local-token}
+
+  telegraf:
+    image: telegraf:1.32.2
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+    volumes:
+      - ./telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    environment:
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-flora-local-token}
+      MQTT_SERVER: ${MQTT_SERVER:-tcp://host.docker.internal:1883}
+      MQTT_USER: ""
+      MQTT_PASS: ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-flora-admin}
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-flora-local-token}
+
+volumes:
+  influx-data:
+  grafana-data:

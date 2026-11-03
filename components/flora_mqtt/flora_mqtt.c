@@ -6,6 +6,7 @@
 #include "flora_mqtt.h"
 
 #include "esp_check.h"
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "mqtt_client.h"
 
@@ -163,6 +164,16 @@ esp_err_t flora_mqtt_init(const flora_mqtt_cfg_t *cfg)
         .session.keepalive         = cfg->keepalive_s ? cfg->keepalive_s : 30,
     };
 
+    /* Polaczenie szyfrowane weryfikujemy pakietem certyfikatow glownych
+     * z ESP-IDF (te same, co w przegladarkach). Certyfikat z Let's Encrypt
+     * przechodzi bez wkompilowywania czegokolwiek, a odnowienie co 90 dni
+     * nie wymaga zmian w robocie - zmienia sie tylko certyfikat serwera,
+     * nie urzad, ktory go podpisal. */
+    bool tls = strncmp(cfg->uri, "mqtts://", 8) == 0 || strncmp(cfg->uri, "wss://", 6) == 0;
+    if (tls) {
+        mc.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
+    }
+
     if (cfg->lwt_topic && cfg->lwt_message) {
         ESP_RETURN_ON_ERROR(full_topic(lwt_full, sizeof(lwt_full), cfg->lwt_topic),
                             TAG, "temat testamentu");
@@ -183,8 +194,9 @@ esp_err_t flora_mqtt_init(const flora_mqtt_cfg_t *cfg)
     ESP_GOTO_ON_ERROR(esp_mqtt_client_start(s_m.client), fail, TAG, "esp_mqtt_client_start");
 
     s_m.initialized = true;
-    ESP_LOGI(TAG, "klient uruchomiony: %s, prefiks tematow \"%s\"",
-             cfg->uri, s_m.base[0] ? s_m.base : "(brak)");
+    ESP_LOGI(TAG, "klient uruchomiony: %s%s%s, prefiks tematow \"%s\"",
+             cfg->uri, tls ? " (TLS)" : "", cfg->username ? ", z logowaniem" : "",
+             s_m.base[0] ? s_m.base : "(brak)");
     return ESP_OK;
 
 fail:

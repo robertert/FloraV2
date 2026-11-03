@@ -1,0 +1,18 @@
+# Budowanie obrazow flora-* lokalnie, bez CI - do proby na laptopie:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+#
+# Na serwerze NIE uzywane: tam obrazy przychodza z rejestru (flora-deploy).
+x-build: &build
+  context: ../..
+
+services:
+  caddy:
+    build: { <<: *build, dockerfile: tools/server/images/caddy/Dockerfile }
+  mosquitto:
+    build: { <<: *build, dockerfile: tools/server/images/mosquitto/Dockerfile }
+  telegraf:
+    build: { <<: *build, dockerfile: tools/server/images/telegraf/Dockerfile }
+  grafana:
+    build: { <<: *build, dockerfile: tools/server/images/grafana/Dockerfile }

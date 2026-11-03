@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Wdrozenie wersji stacku na serwerze. Instalacja (raz, jako root):
+#
+#   sudo install -o root -g root -m 755 flora-deploy /usr/local/bin/flora-deploy
+#
+# Instalowany POZA /opt/flora, ktory sam nadpisuje - inaczej CI moglo by
+# podmienic skrypt, ktory potem uruchamia jako root.
+#
+# Wywolanie:
+#   flora-deploy v1.2.0 < pliki.tar.gz   CI: nowa wersja + pliki serwera
+#   flora-deploy v1.1.0                  recznie: powrot do starszej wersji
+#
+# CI loguje sie kluczem, ktory w authorized_keys uzytkownika "deploy" ma
+# wymuszona komende (patrz README), wiec moze uruchomic TYLKO ten skrypt,
+# a tag przychodzi jako jedyny argument.
+set -euo pipefail
+
+# Zmienna tylko do testow. Przez wymuszona komende SSH i sudo nie da sie
+# jej podac (sudo czysci srodowisko), wiec CI zawsze trafia w /opt/flora.
+DIR="${FLORA_DEPLOY_DIR:-/opt/flora/tools/server}"
+# Tylko te pliki wolno CI nadpisac. Sekrety (.env, passwd, certs, data)
+# nigdy nie przychodza z zewnatrz.
+ALLOWED="docker-compose.yml setup.sh renew-certs.sh"
+
+TAG="${1:-}"
+# Tag trafia do .env i do nazw obrazow - dopuszczamy wylacznie vX.Y.Z,
+# zeby nic innego nie przeszlo przez wymuszona komende.
+if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "flora-deploy: zly tag \"$TAG\", oczekiwany vX.Y.Z" >&2
+    exit 2
+fi
+if [ ! -f "$DIR/.env" ]; then
+    echo "flora-deploy: brak $DIR/.env - najpierw jednorazowo ./setup.sh" >&2
+    exit 1
+fi
+
+# --- pliki serwera z CI (opcjonalnie, przy recznym powrocie brak) ---
+if [ ! -t 0 ]; then
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    cat > "$tmp/in.tar.gz"
+    if [ -s "$tmp/in.tar.gz" ]; then
+        # Rozpakowujemy tylko nazwy z listy; sciezki z "/" czy ".." w
+        # archiwum nie pasuja do zadnej z nich, wiec nie wyjda poza $tmp.
+        # shellcheck disable=SC2086
+        tar -xzf "$tmp/in.tar.gz" -C "$tmp" $ALLOWED
+        install -m 644 "$tmp/docker-compose.yml" "$DIR/docker-compose.yml"
+        install -m 755 "$tmp/setup.sh" "$DIR/setup.sh"
+        install -m 755 "$tmp/renew-certs.sh" "$DIR/renew-certs.sh"
+        echo "zaktualizowano pliki serwera"
+    fi
+fi
+
+cd "$DIR"
+prev=$(sed -n 's/^FLORA_VERSION=//p' .env)
+sed -i '/^FLORA_VERSION=/d' .env
+echo "FLORA_VERSION=$TAG" >> .env
+echo "wersja: ${prev:-brak} -> $TAG"
+
+docker compose pull --quiet
+# Odtwarza tylko kontenery, ktorych obraz albo konfiguracja sie zmienily.
+docker compose up -d --remove-orphans
+
+# Prosty test zdrowia: po chwili wszystkie uslugi maja dzialac. Gdy ktoras
+# padla, wracamy do poprzedniej wersji - lepiej stary dzialajacy broker
+# niz robot bez polaczenia.
+sleep 15
+expected=$(docker compose config --services | wc -l)
+running=$(docker compose ps --status running --services | wc -l)
+if [ "$running" -ne "$expected" ]; then
+    echo "flora-deploy: dziala $running z $expected uslug:" >&2
+    docker compose ps -a >&2
+    if [ -n "$prev" ] && [ "$prev" != "$TAG" ] && [ "$prev" != "latest" ]; then
+        echo "flora-deploy: wracam do $prev" >&2
+        sed -i '/^FLORA_VERSION=/d' .env
+        echo "FLORA_VERSION=$prev" >> .env
+        docker compose up -d --remove-orphans
+    fi
+    exit 1
+fi
+
+docker image prune -f > /dev/null
+echo "wdrozono $TAG, uslug: $running"

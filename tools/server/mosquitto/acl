@@ -1,0 +1,14 @@
+# Uprawnienia do tematow. Wszystko, czego tu nie ma, jest zabronione.
+
+# Robot: tylko wlasne tematy. Wyciek hasla robota nie daje dostepu
+# do innych robotow ani do ich komend.
+user robot1
+topic readwrite flora/robot1/#
+
+# Telegraf tylko czyta - nie moze wysylac komend.
+user telegraf
+topic read flora/#
+
+# Panel debugowy: pelny dostep, w tym komendy jazdy i pompki.
+user panel
+topic readwrite flora/#

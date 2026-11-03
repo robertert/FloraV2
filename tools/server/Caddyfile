@@ -1,0 +1,28 @@
+# Caddy sam pobiera i odnawia certyfikat z Let's Encrypt dla DOMAIN.
+# Przy DOMAIN=localhost (test na laptopie) uzywa wlasnego, lokalnego CA.
+{
+	email {$ACME_EMAIL}
+	# Wymuszamy Let's Encrypt, bez zapasowego ZeroSSL - renew-certs.sh
+	# i tak szuka pliku po nazwie domeny, ale jeden wystawca to prostszy obraz.
+	cert_issuer acme
+}
+
+{$DOMAIN} {
+	encode gzip
+
+	# Panel debugowy (tools/dashboard) - sam laczy sie z /mqtt nizej.
+	handle_path /panel/* {
+		root * /srv/panel
+		file_server
+	}
+	redir /panel /panel/
+
+	# MQTT po WebSocket dla panelu. Logowanie i uprawnienia sprawdza broker.
+	handle /mqtt {
+		reverse_proxy mosquitto:9001
+	}
+
+	handle {
+		reverse_proxy grafana:3000
+	}
+}

@@ -54,6 +54,8 @@
   <h1>Flora debug</h1>
   <input id="url" type="text" title="adres brokera WebSocket">
   <input id="base" type="text" title="prefiks tematow" style="width:130px">
+  <input id="user" type="text" placeholder="login" title="login brokera (pusty = bez)" style="width:90px">
+  <input id="pass" type="password" placeholder="haslo" title="haslo brokera" style="width:90px">
   <button id="connect">Polacz</button>
   <span id="conn" class="pill bad">broker: rozlaczony</span>
   <span id="robot" class="pill bad">robot: ?</span>
@@ -123,6 +125,27 @@
   <section class="card" data-topic="head/cam"><h2>Kamera znacznikow <span class="age"></span></h2>
     <div class="kv"></div></section>
 
+  <section class="card" data-topic="config"><h2>Ustawienia (NVS) <span class="age"></span></h2>
+    <div class="kv"></div>
+    <div class="row">
+      <select id="cfg-key">
+        <option value="mqtt_uri">mqtt_uri</option>
+        <option value="wifi_ssid">wifi_ssid</option>
+        <option value="wifi_pass">wifi_pass</option>
+        <option value="mqtt_user">mqtt_user</option>
+        <option value="mqtt_pass">mqtt_pass</option>
+        <option value="soil_dry">soil_dry</option>
+        <option value="soil_wet">soil_wet</option>
+      </select>
+      <input id="cfg-val" type="text" style="width:150px">
+      <button id="cfg-save">zapisz</button>
+    </div>
+    <div class="row"><button id="reboot" class="danger">restart robota</button></div>
+    <p class="muted" style="margin:8px 0 0;font-size:12px">
+      Siec i broker dzialaja po restarcie. Zly adres nie odetnie robota:
+      wroci do ustawien wkompilowanych. Wartosc "-" kasuje ustawienie.</p>
+  </section>
+
   <section class="card wide">
     <h2>Surowe wiadomosci</h2>
     <div class="row" style="margin:0 0 6px">
@@ -145,7 +168,14 @@ function save(key, val) {
 }
 
 const $ = (id) => document.getElementById(id);
-$("url").value = load("flora.url", "ws://" + (location.hostname || "localhost") + ":9001");
+/* Panel serwowany z serwera po HTTPS laczy sie przez to samo wejscie
+ * (Caddy przekazuje /mqtt do brokera), z dysku - wprost na port 9001. */
+const defaultUrl = location.protocol === "https:"
+  ? "wss://" + location.host + "/mqtt"
+  : "ws://" + (location.hostname || "localhost") + ":9001";
+$("url").value = load("flora.url", defaultUrl);
+/* Login pamietany, haslo nie - zostaje tylko w polu do zamkniecia karty. */
+$("user").value = load("flora.user", "");
 $("base").value = load("flora.base", "flora/robot1");
 
 let client = null;
@@ -158,7 +188,14 @@ function connect() {
   save("flora.url", $("url").value);
   save("flora.base", base);
 
-  client = mqtt.connect($("url").value, { reconnectPeriod: 2000, connectTimeout: 5000 });
+  save("flora.user", $("user").value);
+
+  const opts = { reconnectPeriod: 2000, connectTimeout: 5000 };
+  if ($("user").value) {
+    opts.username = $("user").value;
+    opts.password = $("pass").value;
+  }
+  client = mqtt.connect($("url").value, opts);
   client.on("connect", () => {
     setPill("conn", true, "broker: polaczony");
     client.subscribe(base + "/#");
@@ -312,7 +349,8 @@ function updateAges() {
     if (!t) { age.textContent = "brak danych"; card.classList.add("stale"); continue; }
     const s = (now - t) / 1000;
     age.textContent = s < 1 ? "teraz" : s.toFixed(0) + " s temu";
-    card.classList.toggle("stale", s > 15);
+    /* Ustawienia przychodza tylko przy polaczeniu i zmianie - nie starzeja sie. */
+    card.classList.toggle("stale", s > 15 && card.dataset.topic !== "config");
   }
 }
 
@@ -360,6 +398,27 @@ $("pump-off").onclick = () => send("pump", "off");
 $("mast-on").onclick = () => send("mast", "on");
 $("mast-off").onclick = () => send("mast", "off");
 $("stall-clear").onclick = () => send("stall_clear", "1");
+
+$("cfg-save").onclick = () => {
+  const v = $("cfg-val").value.trim();
+  if (v) { send("config/" + $("cfg-key").value, v); $("cfg-val").value = ""; }
+};
+/* Dwa klikniecia zamiast okna potwierdzenia: pierwsze uzbraja przycisk. */
+let rebootArmed = null;
+$("reboot").onclick = () => {
+  if (rebootArmed) {
+    clearTimeout(rebootArmed);
+    rebootArmed = null;
+    $("reboot").textContent = "restart robota";
+    send("reboot", "1");
+    return;
+  }
+  $("reboot").textContent = "na pewno? kliknij jeszcze raz";
+  rebootArmed = setTimeout(() => {
+    rebootArmed = null;
+    $("reboot").textContent = "restart robota";
+  }, 3000);
+};
 
 $("connect").onclick = connect;
 connect();

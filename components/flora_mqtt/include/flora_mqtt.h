@@ -39,7 +39,9 @@ typedef void (*flora_mqtt_data_cb_t)(const char *topic, size_t topic_len,
 typedef void (*flora_mqtt_state_cb_t)(bool connected, void *ctx);
 
 typedef struct {
-    const char *uri;         /**< np. "mqtt://192.168.1.10:1883" */
+    /** np. "mqtt://192.168.1.10:1883". Schemat "mqtts://" wlacza TLS
+     *  z weryfikacja serwera pakietem certyfikatow ESP-IDF. */
+    const char *uri;
     const char *client_id;   /**< NULL generuje identyfikator z adresu MAC */
     const char *username;    /**< NULL gdy broker bez uwierzytelniania */
     const char *password;

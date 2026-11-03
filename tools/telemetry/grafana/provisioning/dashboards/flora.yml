@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: flora
+    folder: Flora
+    type: file
+    # Edycje w Grafanie mozna zapisac, ale zostana nadpisane przy restarcie.
+    # Trwala zmiana = eksport JSON-a do grafana/dashboards/.
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
