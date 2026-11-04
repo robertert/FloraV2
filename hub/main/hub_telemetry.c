@@ -34,6 +34,7 @@
 #include "hub_telemetry.h"
 #include "hub_config.h"
 #include "hub_diag.h"
+#include "hub_drive.h"
 #include "hub_links.h"
 #include "flora_board.h"
 #include "flora_encoders.h"
@@ -142,6 +143,11 @@ static void drive_init(void)
         return;
     }
     s_drive_ok = true;
+
+    /* Petla predkosci startuje zawsze, ale w trybie pwm nic nie wystawia. */
+    if (hub_drive_start() != ESP_OK) {
+        ESP_LOGW(TAG, "petla predkosci nie wystartowala - zostaje jazda na surowej mocy");
+    }
 }
 
 /** Wzorzec z test_pump() w bringup_hydro.c: poziom przez flora_level. */
@@ -293,6 +299,33 @@ static void pub_drive(void)
                            "\"v_l_mm_s\":%.0f,\"v_r_mm_s\":%.0f,\"stall\":\"%s\"}",
                            pl, pr, now.left_counts, now.right_counts,
                            now.left_mm, now.right_mm, vl, vr, stall);
+}
+
+/**
+ * Przebieg petli predkosci do strojenia. Tylko w trybie pid, w trakcie
+ * jazdy i sekunde po niej (widac wybieg), zeby na postoju nie smiecic.
+ */
+static void pub_pid(void)
+{
+    static int64_t last_active_us;
+
+    hub_drive_state_t st;
+    hub_drive_get_state(&st);
+    if (st.mode != HUB_DRIVE_MODE_PID) {
+        return;
+    }
+    int64_t now = esp_timer_get_time();
+    if (st.active) {
+        last_active_us = now;
+    } else if (now - last_active_us > 1000000) {
+        return;
+    }
+    flora_mqtt_publish_fmt("tele/pid", 0, false,
+                           "{\"sp_l\":%.1f,\"sp_r\":%.1f,\"v_l\":%.1f,\"v_r\":%.1f,"
+                           "\"u_l\":%.1f,\"u_r\":%.1f,\"ff_l\":%.1f,\"ff_r\":%.1f,"
+                           "\"i_l\":%.1f,\"i_r\":%.1f}",
+                           st.sp_l, st.sp_r, st.v_l, st.v_r, st.u_l, st.u_r,
+                           st.ff_l, st.ff_r, st.i_l, st.i_r);
 }
 
 static void pub_soil(void)
@@ -524,6 +557,7 @@ static void telemetry_task(void *arg)
         if (DUE(tick, 5000)) { pub_sys(); }
         if (s_ina && DUE(tick, 500)) { pub_power(); }
         if (s_drive_ok && DUE(tick, 200)) { pub_drive(); }
+        if (s_drive_ok) { pub_pid(); }
         if (s_soil_ok && DUE(tick, 2000)) { pub_soil(); }
         if (s_sonar_ok && DUE(tick, 500)) { pub_sonar(); }
         if (s_temp_ok) { temp_step(DUE(tick, 2000)); }

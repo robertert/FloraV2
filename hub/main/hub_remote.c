@@ -21,6 +21,7 @@
 #include "esp_timer.h"
 
 #include "hub_config.h"
+#include "hub_drive.h"
 #include "hub_ota.h"
 #include "hub_remote.h"
 #include "hub_telemetry.h"
@@ -55,7 +56,7 @@ static void deadman_check(void *arg)
 {
     if (s_driving && esp_timer_get_time() - s_drive_last_us > DRIVE_HOLD_MS * 1000LL) {
         s_driving = false;
-        flora_motors_stop();
+        hub_drive_stop();
         ESP_LOGW(TAG, "brak odswiezenia cmd/drive przez %d ms - stop", DRIVE_HOLD_MS);
     }
 }
@@ -75,14 +76,21 @@ static esp_err_t cmd_drive(const char *arg)
     else if (strcmp(arg, "right") == 0) { l =  p; r = -p; }
     else if (strcmp(arg, "stop")  == 0) {
         s_driving = false;
-        return flora_motors_stop();
+        return hub_drive_stop();
     } else {
         return ESP_ERR_INVALID_ARG;
     }
 
     /* Znacznik przed zadaniem mocy, zeby timer nie zatrzymal swiezej komendy. */
     s_drive_last_us = esp_timer_get_time();
-    esp_err_t err = flora_motors_set(l, r);
+    esp_err_t err;
+    if (hub_drive_ready() && hub_drive_mode() == HUB_DRIVE_MODE_PID) {
+        /* Suwak mocy w panelu zostaje 0..100, w trybie pid to procent pid_vmax. */
+        float k = hub_drive_vmax() / 100.0f;
+        err = hub_drive_set_speed(l * k, r * k);
+    } else {
+        err = flora_motors_set(l, r);
+    }
     s_driving = (err == ESP_OK);
     return err;
 }
@@ -131,6 +139,28 @@ static esp_err_t cmd_mast(const char *arg)
     return ESP_ERR_INVALID_ARG;
 }
 
+/** Test skoku do strojenia: "<mm_s> <ms>", np. "150 2000". */
+static esp_err_t cmd_pid_step(const char *arg)
+{
+    if (hub_ota_in_progress()) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    char *end;
+    float v = strtof(arg, &end);
+    if (end == arg || *end != ' ') {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const char *p = end;
+    unsigned long ms = strtoul(p, &end, 10);
+    if (end == p || *end) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    /* Skok konczy sie sam, wiec dead-man nie dotyczy - ale zwykla jazda
+     * z panelu, ktora trwala, przestaje byc pilnowana jako "jazda". */
+    s_driving = false;
+    return hub_drive_step(v, (uint32_t)ms);
+}
+
 static void reboot_now(void *arg)
 {
     esp_restart();
@@ -146,7 +176,7 @@ static esp_err_t cmd_reboot(void)
             return err;
         }
     }
-    flora_motors_stop();
+    hub_drive_stop();
     flora_pump_stop();
     ESP_LOGW(TAG, "restart na zadanie z brokera");
     esp_timer_stop(s_reboot);   /* powtorzona komenda nie przesuwa restartu w nieskonczonosc */
@@ -182,6 +212,7 @@ static void on_cmd(const char *topic, size_t topic_len,
     else if (strcmp(cmd, "drive_power") == 0) { err = cmd_drive_power(arg); }
     else if (strcmp(cmd, "pump") == 0)        { err = cmd_pump(arg); }
     else if (strcmp(cmd, "mast") == 0)        { err = cmd_mast(arg); }
+    else if (strcmp(cmd, "pid_step") == 0)    { err = cmd_pid_step(arg); }
     else if (strcmp(cmd, "stall_clear") == 0) { err = flora_motors_clear_stall(); }
     else if (strcmp(cmd, "reboot") == 0)      { err = cmd_reboot(); }
     else if (strcmp(cmd, "ota") == 0)         { err = hub_ota_start(arg); }

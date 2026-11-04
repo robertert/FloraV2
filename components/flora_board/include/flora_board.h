@@ -140,6 +140,31 @@
 #define FLORA_NVS_GYRO_BIAS_Y "gyro_bias_y"
 #define FLORA_NVS_GYRO_BIAS_Z "gyro_bias_z"
 
+/* ---- Regulator predkosci kol (hub_drive) ----
+ * Klucze w FLORA_NVS_NS_CALIB, ustawiane przez cmd/config/<klucz>.
+ * Domyslne celowo "puste": strojenie zaczyna sie od zera, kolejnosc
+ * w hub/main/hub_drive.h. Jednostki: moc w %, predkosc w mm/s.
+ *
+ * Punkt zaczepienia dla kff: 27.10.2026 na 40% mocy robot jechal
+ * ~86 mm/s (430 mm w 5 s), czyli kff rzedu 0,3-0,4 po odjeciu ks.
+ */
+#define FLORA_NVS_PID_KP     "pid_kp"
+#define FLORA_NVS_PID_KI     "pid_ki"
+#define FLORA_NVS_PID_KD     "pid_kd"
+#define FLORA_NVS_PID_KFF    "pid_kff"
+#define FLORA_NVS_PID_KS     "pid_ks"
+#define FLORA_NVS_PID_ACC    "pid_acc"
+#define FLORA_NVS_PID_VMAX   "pid_vmax"
+#define FLORA_NVS_DRIVE_MODE "drive_mode"
+
+#define FLORA_PID_KP_DEFAULT    0.1f
+#define FLORA_PID_KI_DEFAULT    0.0f
+#define FLORA_PID_KD_DEFAULT    0.0f
+#define FLORA_PID_KFF_DEFAULT   0.0f
+#define FLORA_PID_KS_DEFAULT    0.0f
+#define FLORA_PID_ACC_DEFAULT   300.0f  /**< mm/s^2; 0 = bez rampy */
+#define FLORA_PID_VMAX_DEFAULT  150.0f  /**< mm/s przy suwaku mocy 100% */
+
 /* ---- Siec: WiFi i MQTT ----
  * ================== DO UZUPELNIENIA ==================
  * Na razie wpisane na sztywno. Sluza jako wartosci DOMYSLNE - aplikacja

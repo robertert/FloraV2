@@ -32,3 +32,6 @@ tools/server/.env
 tools/server/data/
 tools/server/certs/
 tools/server/mosquitto/passwd
+
+# Test regulatora na komputerze, patrz components/flora_pid/host/test.c.
+components/flora_pid/host/test

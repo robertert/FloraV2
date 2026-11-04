@@ -14,7 +14,9 @@
  *
  * Komendy (payload tekstowy), odpowiedz na ack/<nazwa>: "ok" albo blad:
  *   cmd/drive        fwd | back | left | right | stop
- *   cmd/drive_power  0..100, moc dla cmd/drive (domyslnie 30)
+ *   cmd/drive_power  0..100, moc dla cmd/drive (domyslnie 30);
+ *                    w trybie pid procent pid_vmax
+ *   cmd/pid_step     "<mm_s> <ms>", skok predkosci do strojenia (tylko tryb pid)
  *   cmd/pump         on | off | liczba ms
  *   cmd/mast         on | off
  *   cmd/stall_clear  dowolny

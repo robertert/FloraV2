@@ -13,6 +13,9 @@
  *   wifi_ssid, wifi_pass, mqtt_uri,
  *   mqtt_user, mqtt_pass            - dzialaja po restarcie (cmd/reboot)
  *   soil_dry, soil_wet              - dzialaja od razu
+ *   drive_mode (pwm|pid), pid_kp, pid_ki, pid_kd, pid_kff, pid_ks,
+ *   pid_acc, pid_vmax               - dzialaja od razu, patrz hub_drive.h
+ *                                     ("-" wraca do domyslnej)
  *
  * Wartosc "-" dla kluczy tekstowych kasuje klucz (wraca wartosc
  * wkompilowana, czyli serwer i login robot1 z flora_board.h).

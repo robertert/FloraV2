@@ -102,6 +102,33 @@
 
   <section class="card" data-topic="tele/drive"><h2>Naped <span class="age"></span></h2>
     <div class="kv"></div><canvas data-plot="tele/drive:v_l_mm_s,v_r_mm_s"></canvas></section>
+  <section class="card" data-topic="tele/pid" id="c-pid"><h2>PID predkosci <span class="age"></span></h2>
+    <div class="row">
+      tryb <button id="mode-pwm">pwm</button><button id="mode-pid">pid</button>
+      <span id="mode-now" class="muted"></span>
+    </div>
+    <div class="row">
+      kp <input id="pid_kp" type="number" step="0.01" style="width:60px">
+      ki <input id="pid_ki" type="number" step="0.01" style="width:60px">
+      kd <input id="pid_kd" type="number" step="0.001" style="width:60px">
+    </div>
+    <div class="row">
+      kff <input id="pid_kff" type="number" step="0.01" style="width:60px">
+      ks <input id="pid_ks" type="number" step="0.5" style="width:60px">
+      acc <input id="pid_acc" type="number" step="50" style="width:60px">
+      vmax <input id="pid_vmax" type="number" step="10" style="width:60px">
+    </div>
+    <div class="row">
+      skok <input id="step-v" type="number" value="150" style="width:60px"> mm/s
+      <input id="step-ms" type="number" value="2000" style="width:60px"> ms
+      <button id="pid-step">skok</button>
+    </div>
+    <p class="muted" style="margin:8px 0 0;font-size:12px">
+      Pole wysyla sie po zmianie (Enter albo wyjscie z pola). Wykresy:
+      niebieski = zadana, pomaranczowy = pomiar; gora lewe, dol prawe kolo.</p>
+    <canvas data-plot="tele/pid:sp_l,v_l"></canvas>
+    <canvas data-plot="tele/pid:sp_r,v_r"></canvas>
+    <div class="kv"></div></section>
   <section class="card" data-topic="tele/power"><h2>Zasilanie <span class="age"></span></h2>
     <div class="kv"></div><canvas data-plot="tele/power:a"></canvas></section>
   <section class="card" data-topic="tele/soil"><h2>Gleba <span class="age"></span></h2>
@@ -293,6 +320,7 @@ function onMessage(topic, buf) {
   const card = document.querySelector('.card[data-topic="' + rel + '"]');
   if (card) { renderKv(card.querySelector(".kv"), data); }
   if (rel === "tele/ota") { otaProgress(data); }
+  if (rel === "config") { pidConfig(data); }
 
   for (const [k, v] of Object.entries(data)) {
     if (typeof v !== "number") { continue; }
@@ -480,6 +508,30 @@ function armed(button, label, action) {
       clearTimeout(timer);
       timer = null;
       button.textContent = label;
+/* ---- strojenie PID ---- */
+const PID_KEYS = ["pid_kp", "pid_ki", "pid_kd", "pid_kff", "pid_ks", "pid_acc", "pid_vmax"];
+
+/* Wartosci z robota (temat config), ale nie nadpisujemy pola, w ktorym
+ * ktos wlasnie pisze. */
+function pidConfig(data) {
+  for (const k of PID_KEYS) {
+    const el = $(k);
+    if (k in data && document.activeElement !== el) { el.value = data[k]; }
+  }
+  if (data.drive_mode) {
+    $("mode-now").textContent = "teraz: " + data.drive_mode;
+    $("mode-pwm").classList.toggle("on", data.drive_mode === "pwm");
+    $("mode-pid").classList.toggle("on", data.drive_mode === "pid");
+  }
+}
+
+for (const k of PID_KEYS) {
+  $(k).onchange = () => send("config/" + k, $(k).value);
+}
+$("mode-pwm").onclick = () => send("config/drive_mode", "pwm");
+$("mode-pid").onclick = () => send("config/drive_mode", "pid");
+$("pid-step").onclick = () => send("pid_step", $("step-v").value + " " + $("step-ms").value);
+
       action();
       return;
     }
