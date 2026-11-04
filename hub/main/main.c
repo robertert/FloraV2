@@ -23,6 +23,7 @@
 #include "bringup_power.h"
 #include "hub_diag.h"
 #include "hub_links.h"
+#include "hub_ota.h"
 #include "hub_remote.h"
 #include "hub_telemetry.h"
 #include "flora_board.h"
@@ -102,6 +103,8 @@ void app_main(void)
     if (hub_diag_init() != ESP_OK) {
         ESP_LOGW(TAG, "diagnostyka zdalna niedostepna - logi tylko przez USB");
     }
+    /* Odliczanie do potwierdzenia nowej wersji po OTA biegnie od startu. */
+    hub_ota_check_pending();
     flora_store_report_space();
 
     ina226_setup();

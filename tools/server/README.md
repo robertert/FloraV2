@@ -8,6 +8,7 @@ ktore buduje CI z tagu git; na serwerze leza tylko sekrety i dane.
 |---|---|
 | `https://<domena>/` | Grafana |
 | `https://<domena>/panel/` | panel debugowy (login `panel`) |
+| `https://<domena>/ota/hub/` | firmware dla OTA (tylko login `robot1`) |
 | `mqtts://<domena>:8883` | robot (login `robot1`) |
 
 ```
@@ -149,6 +150,33 @@ W najgorszym razie start sieci trwa wtedy do ok. 1,5 min (trzy proby).
 
 Zmiana adresu serwera bez flashowania: `cmd/config/mqtt_uri`, potem `reboot`.
 Powrot do wartosci z firmware: ten sam klucz ustawiony na `-`.
+
+## OTA: firmware bryly
+
+```
+git tag hub-v1.2.0 && git push origin hub-v1.2.0
+   -> GitHub Actions (.github/workflows/hub.yml): budowa w espressif/idf:v6.1,
+      sprawdzenie, ze wersja w obrazie = tag
+   -> ssh deploy@VPS "ota hub-v1.2.0" < hub.bin
+   -> flora-deploy: data/ota/hub/hub-v1.2.0.bin + .json (suma liczona tutaj),
+      latest.json, zostaje 5 ostatnich wersji
+panel: "aktualizuj do najnowszej" -> robot pobiera, sprawdza sume, restartuje
+```
+
+CI tylko wrzuca plik - robot aktualizuje sie wylacznie na komende z panelu
+(`cmd/ota`). Pliki serwuje Caddy pod `/ota/` z loginem `robot1` i jego haslem
+(skrot `OTA_PASS_HASH` w `.env`, liczony z `MQTT_PASS_ROBOT`): binarka ma w
+sobie domyslne haslo WiFi, wiec nie moze byc publiczna.
+
+Co jest na serwerze: `ls /opt/flora/tools/server/data/ota/hub/`,
+najnowsza: `cat .../latest.json`.
+
+**Jednorazowo po zmianie flora-deploy** (CI celowo go nie aktualizuje, bo
+dziala jako root):
+```sh
+rsync -av tools/server/flora-deploy flora:/tmp/
+ssh flora 'sudo install -o root -g root -m 755 /tmp/flora-deploy /usr/local/bin/flora-deploy'
+```
 
 ## Konta brokera (`mosquitto/acl`)
 

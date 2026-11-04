@@ -781,6 +781,297 @@
     },
     {
       "id": 13,
+      "type": "stat",
+      "title": "Partycja",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"partition\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Slot, z ktorego robot wystartowal (ota_0 / ota_1). Zmienia sie po kazdej udanej aktualizacji."
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Odrzucona wersja",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 4,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "": {
+                  "text": "brak",
+                  "color": "green",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "regex",
+              "options": {
+                "pattern": ".+",
+                "result": {
+                  "color": "red",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"rolled_back\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ],
+      "description": "Wersja, ktora nie potwierdzila sie po OTA (brak polaczenia albo awaria) i bootloader wrocil do poprzedniej. Znika po nastepnej udanej aktualizacji."
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Ostatnia aktualizacja",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "confirmed": {
+                  "text": "potwierdzona",
+                  "color": "green",
+                  "index": 0
+                },
+                "failed": {
+                  "text": "nieudana",
+                  "color": "red",
+                  "index": 1
+                },
+                "rebooting": {
+                  "text": "restart",
+                  "color": "blue",
+                  "index": 2
+                },
+                "downloading": {
+                  "text": "pobieranie",
+                  "color": "blue",
+                  "index": 3
+                },
+                "verifying": {
+                  "text": "sprawdzanie",
+                  "color": "blue",
+                  "index": 4
+                },
+                "starting": {
+                  "text": "start",
+                  "color": "blue",
+                  "index": 5
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"ota\" and r._field == \"state\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Do wersji",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"ota\" and r._field == \"to\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          }
+        }
+      ]
+    },
+    {
+      "id": 17,
       "type": "row",
       "title": "Zasilanie",
       "collapsed": false,
@@ -788,12 +1079,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 13
       },
       "panels": []
     },
     {
-      "id": 14,
+      "id": 18,
       "type": "timeseries",
       "title": "Napiecie baterii",
       "datasource": {
@@ -804,7 +1095,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 10
+        "y": 14
       },
       "fieldConfig": {
         "defaults": {
@@ -842,7 +1133,7 @@
       "description": "Jedna os na wykres: napiecie i prad maja inne skale, wiec sa osobno."
     },
     {
-      "id": 15,
+      "id": 19,
       "type": "timeseries",
       "title": "Prad",
       "datasource": {
@@ -853,7 +1144,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 10
+        "y": 14
       },
       "fieldConfig": {
         "defaults": {
@@ -890,7 +1181,7 @@
       ]
     },
     {
-      "id": 16,
+      "id": 20,
       "type": "row",
       "title": "Gleba, woda, temperatura",
       "collapsed": false,
@@ -898,12 +1189,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 22
       },
       "panels": []
     },
     {
-      "id": 17,
+      "id": 21,
       "type": "timeseries",
       "title": "Wilgotnosc gleby",
       "datasource": {
@@ -914,7 +1205,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 19
+        "y": 23
       },
       "fieldConfig": {
         "defaults": {
@@ -953,7 +1244,7 @@
       ]
     },
     {
-      "id": 18,
+      "id": 22,
       "type": "timeseries",
       "title": "Temperatura",
       "datasource": {
@@ -964,7 +1255,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 19
+        "y": 23
       },
       "fieldConfig": {
         "defaults": {
@@ -1002,7 +1293,7 @@
       "description": "DS18B20 w bryle i BME280 w glowicy - ta sama jednostka, wiec na jednym wykresie."
     },
     {
-      "id": 19,
+      "id": 23,
       "type": "timeseries",
       "title": "Czas pracy pompki w oknie dobowym",
       "datasource": {
@@ -1013,7 +1304,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 27
+        "y": 31
       },
       "fieldConfig": {
         "defaults": {
@@ -1051,7 +1342,7 @@
       "description": "Narasta do limitu dobowego (domyslnie 10 min), potem pompka odmawia."
     },
     {
-      "id": 20,
+      "id": 24,
       "type": "timeseries",
       "title": "Dalmierz",
       "datasource": {
@@ -1062,7 +1353,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 27
+        "y": 31
       },
       "fieldConfig": {
         "defaults": {
@@ -1099,7 +1390,7 @@
       ]
     },
     {
-      "id": 21,
+      "id": 25,
       "type": "row",
       "title": "Glowica masztu",
       "collapsed": false,
@@ -1107,12 +1398,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 39
       },
       "panels": []
     },
     {
-      "id": 22,
+      "id": 26,
       "type": "timeseries",
       "title": "Kurs",
       "datasource": {
@@ -1123,7 +1414,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 36
+        "y": 40
       },
       "fieldConfig": {
         "defaults": {
@@ -1162,7 +1453,7 @@
       ]
     },
     {
-      "id": 23,
+      "id": 27,
       "type": "timeseries",
       "title": "Natezenie swiatla N / E / S / W",
       "datasource": {
@@ -1173,7 +1464,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 36
+        "y": 40
       },
       "fieldConfig": {
         "defaults": {
@@ -1211,7 +1502,7 @@
       "description": "Kompas sloneczny: najjasniejszy kierunek wskazuje slonce."
     },
     {
-      "id": 24,
+      "id": 28,
       "type": "timeseries",
       "title": "Wilgotnosc powietrza",
       "datasource": {
@@ -1222,7 +1513,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 44
+        "y": 48
       },
       "fieldConfig": {
         "defaults": {
@@ -1259,7 +1550,7 @@
       ]
     },
     {
-      "id": 25,
+      "id": 29,
       "type": "timeseries",
       "title": "Cisnienie",
       "datasource": {
@@ -1270,7 +1561,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 44
+        "y": 48
       },
       "fieldConfig": {
         "defaults": {
@@ -1307,7 +1598,7 @@
       ]
     },
     {
-      "id": 26,
+      "id": 30,
       "type": "row",
       "title": "Naped",
       "collapsed": false,
@@ -1315,12 +1606,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 56
       },
       "panels": []
     },
     {
-      "id": 27,
+      "id": 31,
       "type": "timeseries",
       "title": "Predkosc kol",
       "datasource": {
@@ -1331,7 +1622,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 53
+        "y": 57
       },
       "fieldConfig": {
         "defaults": {
@@ -1368,7 +1659,7 @@
       ]
     },
     {
-      "id": 28,
+      "id": 32,
       "type": "row",
       "title": "Diagnostyka",
       "collapsed": false,
@@ -1376,12 +1667,12 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 61
+        "y": 65
       },
       "panels": []
     },
     {
-      "id": 29,
+      "id": 33,
       "type": "table",
       "title": "Logi robota (ostrzezenia i bledy)",
       "datasource": {
@@ -1392,7 +1683,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 66
       },
       "description": "Linie W i E z logu ESP, wysylane na tele/log. t_ms to czas od startu robota.",
       "fieldConfig": {
@@ -1509,7 +1800,149 @@
       ]
     },
     {
-      "id": 30,
+      "id": 34,
+      "type": "table",
+      "title": "Historia aktualizacji OTA",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "flora-influx"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 76
+      },
+      "description": "Stany koncowe z tele/ota: confirmed, failed (z powodem), rebooting.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "_time"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "czas"
+              },
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "state"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "stan"
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "confirmed": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "failed": {
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "current"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "z wersji"
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "to"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "do wersji"
+              },
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "err"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "powod"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "flora-influx"
+          },
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ota\" and r._field != \"pct\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> filter(fn: (r) => r.state == \"confirmed\" or r.state == \"failed\" or r.state == \"rebooting\")\n  |> keep(columns: [\"_time\", \"state\", \"current\", \"to\", \"err\"])\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 50)"
+        }
+      ]
+    },
+    {
+      "id": 35,
       "type": "timeseries",
       "title": "Wolna pamiec",
       "datasource": {
@@ -1520,7 +1953,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 72
+        "y": 83
       },
       "fieldConfig": {
         "defaults": {
@@ -1558,7 +1991,7 @@
       "description": "Minimum w oknie - wyciek widac po stalym spadku."
     },
     {
-      "id": 31,
+      "id": 36,
       "type": "timeseries",
       "title": "Sygnal WiFi",
       "datasource": {
@@ -1569,7 +2002,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 72
+        "y": 83
       },
       "fieldConfig": {
         "defaults": {

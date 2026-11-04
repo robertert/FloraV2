@@ -17,6 +17,18 @@
 	}
 	redir /panel /panel/
 
+	# Firmware dla OTA (flora-deploy "ota ..." zapisuje tu pliki z CI).
+	# Z loginem robota: binarka zawiera domyslne haslo WiFi z flora_board.h,
+	# wiec nie moze byc publiczna. OTA_PASS_HASH to skrot bcrypt hasla
+	# robot1 - setup.sh liczy go z MQTT_PASS_ROBOT.
+	handle_path /ota/* {
+		basic_auth {
+			robot1 {$OTA_PASS_HASH}
+		}
+		root * /srv/ota
+		file_server
+	}
+
 	# MQTT po WebSocket dla panelu. Logowanie i uprawnienia sprawdza broker.
 	handle /mqtt {
 		reverse_proxy mosquitto:9001

@@ -1,0 +1,83 @@
+# Tag hub-vX.Y.Z -> firmware bryly -> serwer (data/ota/hub) -> OTA z panelu.
+#
+#   git tag hub-v0.2.0 && git push origin hub-v0.2.0
+#
+# Workflow tylko BUDUJE i WRZUCA plik na serwer. Robot aktualizuje sie
+# dopiero po kliknieciu "Aktualizuj" w panelu (cmd/ota), nigdy sam.
+#
+# Sekrety te same co dla server.yml (srodowisko "production"): DEPLOY_HOST,
+# DEPLOY_SSH_KEY, DEPLOY_KNOWN_HOSTS. Na serwerze ten sam klucz i ta sama
+# wymuszona komenda - flora-deploy rozpoznaje tryb po argumencie "ota ...".
+name: hub
+
+on:
+  push:
+    tags: ["hub-v*.*.*"]
+
+concurrency:
+  group: hub-ota
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v6.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Wersja firmware pochodzi z `git describe --match "hub-v*"`
+          # (hub/CMakeLists.txt) - bez historii i tagow bylby sam skrot commita.
+          fetch-depth: 0
+
+      - name: Budowanie
+        shell: bash
+        run: |
+          # Katalog roboczy w kontenerze nalezy do innego uzytkownika; bez tego
+          # git odmawia pracy i wersja w obrazie bylaby pusta.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          . "$IDF_PATH/export.sh" > /dev/null
+          idf.py -C hub build
+
+      - name: Wersja w obrazie = tag
+        shell: bash
+        run: |
+          # Obraz z inna wersja niz tag (np. budowa z niezacommitowanymi
+          # zmianami) robot pokazalby pod zla nazwa - lepiej przerwac tutaj.
+          ver=$(python3 -c 'import json; print(json.load(open("hub/build/project_description.json"))["project_version"])')
+          echo "wersja w obrazie: $ver"
+          test "$ver" = "$GITHUB_REF_NAME"
+          cp hub/build/hub.bin hub.bin
+          sha256sum hub.bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hub-firmware
+          path: hub.bin
+          retention-days: 30
+
+  upload:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: hub-firmware
+
+      - name: Klucz SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Wgranie na serwer
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Wymuszona komenda dostaje "ota <tag>" jako jeden argument.
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes "deploy@$HOST" "ota $TAG" < hub.bin

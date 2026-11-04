@@ -10,10 +10,11 @@
 #   flora-deploy v1.2.0 < pliki.tar.gz   CI: nowa wersja + pliki serwera
 #                                        (z tagu server-v1.2.0, prefiks obciety)
 #   flora-deploy v1.1.0                  recznie: powrot do starszej wersji
+#   flora-deploy "ota hub-v1.2.0" < hub.bin   CI: firmware bryly dla OTA
 #
 # CI loguje sie kluczem, ktory w authorized_keys uzytkownika "deploy" ma
 # wymuszona komende (patrz README), wiec moze uruchomic TYLKO ten skrypt,
-# a tag przychodzi jako jedyny argument.
+# a tag przychodzi jako jedyny argument (przy OTA: "ota <wersja>" w jednym).
 set -euo pipefail
 
 # Zmienna tylko do testow. Przez wymuszona komende SSH i sudo nie da sie
@@ -23,6 +24,61 @@ DIR="${FLORA_DEPLOY_DIR:-/opt/flora/tools/server}"
 # nigdy nie przychodza z zewnatrz.
 ALLOWED="docker-compose.yml setup.sh renew-certs.sh"
 
+# ================= OTA: firmware bryly =================
+# Plik z CI ladujemy do data/ota/hub, skad serwuje go Caddy (z loginem robota).
+# Sume i rozmiar liczymy TUTAJ, nie bierzemy z CI: robot porownuje z nimi
+# to, co pobral, wiec musza opisywac plik, ktory faktycznie lezy na serwerze.
+OTA_MAX_BYTES=$((3 * 1024 * 1024))   # rozmiar slotu w hub/partitions.csv
+OTA_KEEP=5                           # tyle ostatnich wersji zostaje
+
+if [[ "${*:-}" =~ ^ota\ (hub-v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+    VER="${BASH_REMATCH[1]}"
+    OTA="$DIR/data/ota/hub"
+    mkdir -p "$OTA"
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+
+    # Czytamy o bajt wiecej niz limit - tak wiadomo, ze plik byl za duzy,
+    # bez wczytywania calosci czegos, co moze byc dowolnie wielkie.
+    head -c $((OTA_MAX_BYTES + 1)) > "$tmp/fw.bin"
+    size=$(stat -c %s "$tmp/fw.bin")
+    if [ "$size" -eq 0 ] || [ "$size" -gt "$OTA_MAX_BYTES" ]; then
+        echo "flora-deploy: obraz $size B poza zakresem 1..$OTA_MAX_BYTES" >&2
+        exit 2
+    fi
+    # Obraz aplikacji ESP zaczyna sie od bajtu 0xE9 - odsiewa pomylki typu
+    # wyslanie archiwum albo pliku .elf zamiast .bin.
+    if [ "$(head -c 1 "$tmp/fw.bin" | od -An -tx1 | tr -d ' ')" != "e9" ]; then
+        echo "flora-deploy: to nie jest obraz aplikacji ESP (brak 0xE9 na poczatku)" >&2
+        exit 2
+    fi
+    sha=$(sha256sum "$tmp/fw.bin" | cut -d' ' -f1)
+    printf '{"version":"%s","sha256":"%s","size":%s}\n' "$VER" "$sha" "$size" > "$tmp/fw.json"
+
+    # Zapis przez mv w obrebie katalogu: robot pobierajacy w tej chwili
+    # widzi albo stary, albo nowy plik, nigdy w polowie zapisany.
+    install -m 644 "$tmp/fw.bin"  "$OTA/.$VER.bin.tmp"  && mv "$OTA/.$VER.bin.tmp"  "$OTA/$VER.bin"
+    install -m 644 "$tmp/fw.json" "$OTA/.$VER.json.tmp" && mv "$OTA/.$VER.json.tmp" "$OTA/$VER.json"
+
+    # latest.json tylko do przodu: ponowne wgranie starszej wersji (np.
+    # przebudowa starego tagu) nie cofa "najnowszej".
+    cur=$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$OTA/latest.json" 2>/dev/null || true)
+    newest=$(printf '%s\n%s\n' "${cur:-hub-v0.0.0}" "$VER" | sort -V | tail -n 1)
+    if [ "$newest" = "$VER" ]; then
+        install -m 644 "$tmp/fw.json" "$OTA/.latest.json.tmp" && mv "$OTA/.latest.json.tmp" "$OTA/latest.json"
+        echo "latest: $VER"
+    fi
+
+    # Sprzatanie: zostaje OTA_KEEP najnowszych wersji. Najnowsza z latest.json
+    # jest zawsze wsrod nich, bo sortujemy po numerze wersji.
+    ls "$OTA" | sed -n 's/^\(hub-v[0-9.]*\)\.bin$/\1/p' | sort -V | head -n -"$OTA_KEEP" \
+        | while read -r old; do rm -f "$OTA/$old.bin" "$OTA/$old.json"; echo "usunieto $old"; done
+
+    echo "ota: $VER, $size B, sha256 $sha"
+    exit 0
+fi
+
+# ================= wersja stacku serwera =================
 TAG="${1:-}"
 # Tag trafia do .env i do nazw obrazow - dopuszczamy wylacznie vX.Y.Z,
 # zeby nic innego nie przeszlo przez wymuszona komende.
@@ -53,6 +109,25 @@ if [ ! -t 0 ]; then
 fi
 
 cd "$DIR"
+
+# Uzupelnienia .env dla serwerow postawionych starszym setup.sh - inaczej
+# nowa wersja stacku nie wstanie i test zdrowia cofnalby wdrozenie.
+# Logika jak w setup.sh: skrot hasla robota dla /ota/ w Caddym.
+mkdir -p data/ota/hub
+# Pusty skrot liczy sie jak brak - Caddy z pustym nie wstanie.
+if ! grep -q "^OTA_PASS_HASH='..*'" .env; then
+    robot_pass=$(sed -n 's/^MQTT_PASS_ROBOT=//p' .env)
+    hash=$(docker run --rm caddy:2.8.4 caddy hash-password --plaintext "$robot_pass" || true)
+    if [ -z "$hash" ] || [ -z "$robot_pass" ]; then
+        echo "flora-deploy: nie udalo sie policzyc OTA_PASS_HASH - przerywam przed zmianami" >&2
+        exit 1
+    fi
+    grep -v '^OTA_PASS_HASH=' .env > .env.tmp || true
+    echo "OTA_PASS_HASH='$hash'" >> .env.tmp
+    chmod 600 .env.tmp && mv .env.tmp .env
+    echo "dopisano OTA_PASS_HASH do .env"
+fi
+
 prev=$(sed -n 's/^FLORA_VERSION=//p' .env)
 sed -i '/^FLORA_VERSION=/d' .env
 echo "FLORA_VERSION=$TAG" >> .env

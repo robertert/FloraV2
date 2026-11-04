@@ -114,6 +114,26 @@ Grafana pod http://localhost:3001 (admin / flora-admin), dashboard
 panel za HTTPS): `tools/server/README.md`. Hasla domyslne sa tylko do laptopa - na serwer ustaw wlasne
 w `tools/telemetry/.env` (`INFLUX_PASSWORD`, `INFLUX_TOKEN`, `GRAFANA_PASSWORD`).
 
+## Aktualizacja przez siec (OTA)
+
+Bryla ma dwa sloty aplikacji (`hub/partitions.csv`). Nowa wersja laduje do
+wolnego, a stara zostaje jako zapas:
+
+1. `git tag hub-v1.2.0 && git push origin hub-v1.2.0` - CI buduje firmware i
+   wrzuca go na serwer (`tools/server/README.md`, sekcja OTA).
+2. Panel, karta "Aktualizacja (OTA)": "aktualizuj do najnowszej" albo
+   konkretna wersja. Naped i pompka musza stac.
+3. Robot pobiera po HTTPS z serwera, sprawdza SHA-256 z manifestem i sie
+   restartuje. Postep i wynik na `tele/ota`.
+4. Nowa wersja startuje "na probe": potwierdza sie sama po minucie stabilnego
+   polaczenia z brokerem. Bez polaczenia przez 5 min albo po awarii przed
+   potwierdzeniem bootloader wraca do poprzedniej, a `tele/boot` pokazuje ja
+   w `rolled_back`.
+
+Tablicy partycji nie da sie zmienic przez OTA. Zmiana `hub/partitions.csv`
+oznacza flashowanie kablem. NVS lezy w tym samym miejscu co w dawnym ukladzie,
+wiec przejscie na OTA nie kasuje hasla brokera ani kalibracji.
+
 ## Podglad kamery i zbieranie danych
 
 Glowica w trybie podgladu stawia serwer HTTP i nadaje strumien MJPEG. Adres

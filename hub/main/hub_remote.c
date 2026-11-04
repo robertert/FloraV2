@@ -21,6 +21,7 @@
 #include "esp_timer.h"
 
 #include "hub_config.h"
+#include "hub_ota.h"
 #include "hub_remote.h"
 #include "hub_telemetry.h"
 #include "flora_board.h"
@@ -61,6 +62,11 @@ static void deadman_check(void *arg)
 
 static esp_err_t cmd_drive(const char *arg)
 {
+    /* W trakcie aktualizacji (konczy sie restartem) nie ruszamy. Stop
+     * przechodzi zawsze - zatrzymanie nigdy nie moze byc odrzucone. */
+    if (hub_ota_in_progress() && strcmp(arg, "stop") != 0) {
+        return ESP_ERR_INVALID_STATE;
+    }
     float p = (float)s_drive_power;
     float l, r;
     if      (strcmp(arg, "fwd")   == 0) { l =  p; r =  p; }
@@ -96,6 +102,9 @@ static esp_err_t cmd_pump(const char *arg)
 {
     if (strcmp(arg, "off") == 0) {
         return flora_pump_stop();
+    }
+    if (hub_ota_in_progress()) {
+        return ESP_ERR_INVALID_STATE;
     }
     if (strcmp(arg, "on") == 0) {
         /* Dokladnie max_run_ms, nie "nieskonczonosc" do przyciecia: limit
@@ -175,6 +184,7 @@ static void on_cmd(const char *topic, size_t topic_len,
     else if (strcmp(cmd, "mast") == 0)        { err = cmd_mast(arg); }
     else if (strcmp(cmd, "stall_clear") == 0) { err = flora_motors_clear_stall(); }
     else if (strcmp(cmd, "reboot") == 0)      { err = cmd_reboot(); }
+    else if (strcmp(cmd, "ota") == 0)         { err = hub_ota_start(arg); }
     else if (strncmp(cmd, "config/", 7) == 0) { err = hub_config_set(cmd + 7, arg); }
     else                                      { err = ESP_ERR_NOT_SUPPORTED; }
 

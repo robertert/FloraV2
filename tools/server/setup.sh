@@ -9,6 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 MOSQUITTO_IMAGE=eclipse-mosquitto:2.0.20
+CADDY_IMAGE=caddy:2.8.4
 
 if [ ! -f .env ]; then
     if [ $# -lt 2 ]; then
@@ -35,7 +36,16 @@ fi
 # shellcheck disable=SC1091
 set -a; . ./.env; set +a
 
-mkdir -p data/caddy data/mosquitto data/influxdb data/grafana certs
+mkdir -p data/caddy data/mosquitto data/influxdb data/grafana data/ota/hub certs
+
+# Skrot hasla robota dla Caddy'ego (logowanie do /ota/). Liczony przy kazdym
+# uruchomieniu, wiec zmiana MQTT_PASS_ROBOT w .env od razu go odswieza.
+# Apostrofy obowiazkowe: bcrypt zawiera "$", ktore compose i powloka
+# probowalyby rozwinac jak zmienne.
+hash=$(docker run --rm "$CADDY_IMAGE" caddy hash-password --plaintext "$MQTT_PASS_ROBOT")
+grep -v '^OTA_PASS_HASH=' .env > .env.tmp
+echo "OTA_PASS_HASH='$hash'" >> .env.tmp
+chmod 600 .env.tmp && mv .env.tmp .env
 
 # Plik hasel brokera, zawsze od nowa z .env - zmiana hasla = edycja .env
 # i ponowne ./setup.sh. Hasla sa w nim jako skroty, nie jawnym tekstem.

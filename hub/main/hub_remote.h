@@ -20,5 +20,6 @@
  *   cmd/stall_clear  dowolny
  *   cmd/reboot       dowolny, restart po 0,5 s
  *   cmd/config/<k>   zapis ustawienia do NVS, patrz hub_config.h
+ *   cmd/ota          "latest" albo "hub-vX.Y.Z" [+ " force"], patrz hub_ota.h
  */
 esp_err_t hub_remote_start(void);

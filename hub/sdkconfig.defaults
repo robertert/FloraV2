@@ -5,10 +5,16 @@ CONFIG_IDF_TARGET="esp32s3"
 # i uzywa mniejszego - czyli marnuje 14 MB.
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 
-# Domyslna partycja aplikacji ma 1 MB i przy samym stosie sieciowym
-# (lwIP, supplicant, mbedTLS) zostaje z niej 10% wolnego. Po dolozeniu BLE
-# albo kamery zabraklo by miejsca. Ten uklad daje 1500 kB.
-CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# Wlasna tablica partycji (hub/partitions.csv): dwa sloty po 3 MB pod OTA,
+# NVS w tym samym miejscu co w dawnym ukladzie "single app large", wiec
+# przejscie nie kasuje ustawien. Zmiana tablicy = flashowanie kablem.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Nowa wersja po OTA startuje "na probe". Jesli sie nie potwierdzi
+# (hub_ota.c: polaczenie z MQTT i minuta stabilnej pracy), albo padnie
+# przed potwierdzeniem, bootloader wraca do poprzedniej.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # PSRAM: plytki to warianty N16R8, czyli 8 MB pamieci w trybie oktalnym.
 # Bez tego nie zmiesci sie bufor klatki kamery (320x240 szarosci to 76,8 kB

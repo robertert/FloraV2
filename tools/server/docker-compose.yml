@@ -25,9 +25,12 @@ services:
       # Katalog na hoscie, nie wolumen: renew-certs.sh kopiuje stad
       # certyfikat dla mosquitto.
       - ./data/caddy:/data
+      # Firmware dla OTA, zapisywany przez flora-deploy z CI.
+      - ./data/ota:/srv/ota:ro
     environment:
       DOMAIN: ${DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
+      OTA_PASS_HASH: ${OTA_PASS_HASH}
 
   mosquitto:
     image: ${FLORA_REGISTRY:-ghcr.io/robertert}/flora-mosquitto:${FLORA_VERSION:-latest}

@@ -1,0 +1,21 @@
+# Tablica partycji bryly: dwa sloty aplikacji pod aktualizacje OTA.
+#
+# NVS ZOSTAJE DOKLADNIE TAM, GDZIE BYL w ukladzie "single app large"
+# (0x9000, 0x6000). Dzieki temu przejscie na OTA nie kasuje hasla brokera,
+# kalibracji ani licznika startow - flash zapisuje tablice, bootloader
+# i aplikacje, a obszaru NVS nie rusza. Zmiana offsetu albo rozmiaru NVS
+# = utrata wszystkich ustawien.
+#
+# Tablicy partycji nie da sie zmienic przez OTA - kazda zmiana tego pliku
+# to flashowanie kablem.
+#
+# Name,   Type, SubType,  Offset,  Size
+nvs,      data, nvs,      0x9000,  0x6000
+otadata,  data, ota,      0xf000,  0x2000
+phy_init, data, phy,      0x11000, 0x1000
+# Rezerwa na zrzut awarii (core dump). Sama funkcja jeszcze wylaczona,
+# ale miejsce jest juz zarezerwowane, zeby jej wlaczenie nie wymagalo kabla.
+coredump, data, coredump, 0x12000, 64K
+# Sloty po 3 MB: obraz ma dzis ~1,1 MB, zapas na BLE i kolejne funkcje.
+ota_0,    app,  ota_0,    0x30000, 3M
+ota_1,    app,  ota_1,    ,        3M

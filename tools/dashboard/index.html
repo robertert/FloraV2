@@ -120,6 +120,18 @@
     <div class="kv"></div></section>
   <section class="card" data-topic="tele/boot"><h2>Start <span class="age"></span></h2>
     <div class="kv"></div></section>
+  <section class="card" data-topic="tele/ota"><h2>Aktualizacja (OTA) <span class="age"></span></h2>
+    <div class="kv"></div>
+    <progress id="ota-pct" max="100" value="0" style="width:100%;margin-top:6px" hidden></progress>
+    <div class="row"><button id="ota-latest">aktualizuj do najnowszej</button></div>
+    <div class="row">
+      <input id="ota-ver" type="text" placeholder="hub-v1.2.0" style="width:110px" autocomplete="off">
+      <button id="ota-ver-go">zainstaluj</button>
+    </div>
+    <p class="muted" style="margin:8px 0 0;font-size:12px">
+      Naped i pompka musza stac. Robot pobiera z serwera, restartuje sie, a nowa
+      wersja potwierdza sie sama po minucie polaczenia - inaczej wraca stara.</p>
+  </section>
   <section class="card" data-topic="head/link"><h2>Lacze glowicy <span class="age"></span></h2>
     <div class="kv"></div></section>
   <section class="card" data-topic="head/attitude"><h2>Orientacja <span class="age"></span></h2>
@@ -280,6 +292,7 @@ function onMessage(topic, buf) {
 
   const card = document.querySelector('.card[data-topic="' + rel + '"]');
   if (card) { renderKv(card.querySelector(".kv"), data); }
+  if (rel === "tele/ota") { otaProgress(data); }
 
   for (const [k, v] of Object.entries(data)) {
     if (typeof v !== "number") { continue; }
@@ -451,6 +464,35 @@ $("pump-off").onclick = () => send("pump", "off");
 $("mast-on").onclick = () => send("mast", "on");
 $("mast-off").onclick = () => send("mast", "off");
 $("stall-clear").onclick = () => send("stall_clear", "1");
+
+/* ---- OTA ---- */
+function otaProgress(d) {
+  const bar = $("ota-pct");
+  const active = ["starting", "downloading", "verifying", "rebooting"].includes(d.state);
+  bar.hidden = !active;
+  bar.value = d.pct || 0;
+}
+/* Jak przy restarcie: dwa klikniecia zamiast okna potwierdzenia. */
+function armed(button, label, action) {
+  let timer = null;
+  button.onclick = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+      button.textContent = label;
+      action();
+      return;
+    }
+    button.textContent = "na pewno? kliknij jeszcze raz";
+    timer = setTimeout(() => { timer = null; button.textContent = label; }, 3000);
+  };
+}
+armed($("ota-latest"), "aktualizuj do najnowszej", () => send("ota", "latest"));
+armed($("ota-ver-go"), "zainstaluj", () => {
+  const v = $("ota-ver").value.trim();
+  if (/^hub-v\d+\.\d+\.\d+$/.test(v)) { send("ota", v); }
+  else { $("lastack").textContent = "ota: zly format wersji, np. hub-v1.2.0"; $("lastack").style.color = "var(--bad)"; }
+});
 
 $("cfg-save").onclick = () => {
   const v = $("cfg-val").value.trim();

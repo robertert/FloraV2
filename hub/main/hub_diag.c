@@ -26,6 +26,7 @@
 #include "freertos/task.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_system.h"
 
 #include "hub_diag.h"
@@ -217,9 +218,22 @@ esp_err_t hub_diag_init(void)
 void hub_diag_publish_boot(void)
 {
     const esp_app_desc_t *app = esp_app_get_description();
+    const esp_partition_t *running = esp_ota_get_running_partition();
+
+    /* Wersja, ktora bootloader odrzucil (nie potwierdzila sie po OTA albo
+     * padla). Zostaje oznaczona do nastepnej udanej aktualizacji. */
+    char rolled_back[33] = "";
+    const esp_partition_t *bad = esp_ota_get_last_invalid_partition();
+    esp_app_desc_t bad_desc;
+    if (bad && esp_ota_get_partition_description(bad, &bad_desc) == ESP_OK) {
+        strncpy(rolled_back, bad_desc.version, sizeof rolled_back - 1);
+    }
+
     flora_mqtt_publish_fmt("tele/boot", 1, true,
                            "{\"fw\":\"%s\",\"built\":\"%s %s\",\"idf\":\"%s\","
-                           "\"reset\":\"%s\",\"boots\":%" PRIu32 "}",
+                           "\"reset\":\"%s\",\"boots\":%" PRIu32 ","
+                           "\"partition\":\"%s\",\"rolled_back\":\"%s\"}",
                            app->version, app->date, app->time, app->idf_ver,
-                           reset_name(s_reset), s_boots);
+                           reset_name(s_reset), s_boots,
+                           running ? running->label : "?", rolled_back);
 }
