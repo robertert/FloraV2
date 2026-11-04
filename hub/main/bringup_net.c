@@ -59,10 +59,18 @@ static void on_command(const char *topic, size_t topic_len,
 }
 
 /** Jedna proba: WiFi, potem MQTT. Zostawia dzialajacych klientow nawet
- *  przy ESP_ERR_TIMEOUT brokera, bo ESP-MQTT ponawia w tle. */
+ *  przy ESP_ERR_TIMEOUT brokera, bo ESP-MQTT ponawia w tle.
+ *
+ *  @param[out] wifi_ok  false, gdy proba padla juz na WiFi i do brokera
+ *                       w ogole nie doszlo. Wywolujacy potrzebuje tego
+ *                       rozroznienia, bo sam kod bledu go nie niesie:
+ *                       ESP_ERR_TIMEOUT wraca i z WiFi, i z brokera. */
 static esp_err_t try_connect(const char *ssid, const char *pass, const char *uri,
-                             const char *mqtt_user, const char *mqtt_pass)
+                             const char *mqtt_user, const char *mqtt_pass,
+                             bool *wifi_ok)
 {
+    *wifi_ok = false;
+
     /* --- WiFi --- */
     flora_wifi_cfg_t wcfg = FLORA_WIFI_DEFAULT_CFG();
     strncpy(wcfg.ssid, ssid, sizeof(wcfg.ssid) - 1);
@@ -80,6 +88,8 @@ static esp_err_t try_connect(const char *ssid, const char *pass, const char *uri
         ESP_LOGE(TAG, "  brak polaczenia z \"%s\": %s", ssid, esp_err_to_name(r));
         return r;
     }
+
+    *wifi_ok = true;
 
     /* --- MQTT --- */
     flora_mqtt_cfg_t mcfg = FLORA_MQTT_DEFAULT_CFG();
@@ -117,9 +127,15 @@ typedef struct {
     const char *ssid, *pass, *uri, *user, *mpass;
 } net_attempt_t;
 
+/** Czy obie proby siegaja po te sama siec WiFi. */
+static bool same_wifi(const net_attempt_t *a, const net_attempt_t *b)
+{
+    return strcmp(a->ssid, b->ssid) == 0 && strcmp(a->pass, b->pass) == 0;
+}
+
 static bool same_attempt(const net_attempt_t *a, const net_attempt_t *b)
 {
-    return strcmp(a->ssid, b->ssid) == 0 && strcmp(a->pass, b->pass) == 0 &&
+    return same_wifi(a, b) &&
            strcmp(a->uri, b->uri) == 0 && strcmp(a->user, b->user) == 0 &&
            strcmp(a->mpass, b->mpass) == 0;
 }
@@ -166,7 +182,9 @@ esp_err_t bringup_net_connect(void)
      *   3. broker na Macu         bez hasel - w domu bez internetu i przy
      *                             zgubionym hasle; stad da sie robota naprawic
      * NVS zostaje nietkniete: po chwilowej awarii serwera nastepny restart
-     * znow zacznie od ustawien zapisanych. Identyczne proby sa pomijane. */
+     * znow zacznie od ustawien zapisanych. Identyczne proby sa pomijane,
+     * tak samo jak te, ktore roznia sie wylacznie brokerem, gdy poprzednia
+     * padla juz na WiFi - do brokera i tak by nie doszlo. */
     const net_attempt_t attempts[] = {
         { "z NVS",           ssid, pass, uri, muser, mpass },
         { "serwer domyslny", FLORA_WIFI_SSID_DEFAULT, FLORA_WIFI_PASS_DEFAULT,
@@ -178,9 +196,17 @@ esp_err_t bringup_net_connect(void)
 
     esp_err_t r = ESP_FAIL;
     const net_attempt_t *prev = NULL;
+    bool wifi_ok = false;
     for (size_t i = 0; i < n; i++) {
         const net_attempt_t *a = &attempts[i];
         if (prev && same_attempt(a, prev)) {
+            continue;
+        }
+        if (prev && !wifi_ok && same_wifi(a, prev)) {
+            /* Ta sama siec, ktora przed chwila nie wstala. Kolejne 20 s
+             * czekania na ten sam timeout niczego nie sprawdzi. */
+            ESP_LOGW(TAG, "  pomijam \"%s\": ta sama siec \"%s\", a ona wlasnie nie wstala",
+                     a->label, a->ssid);
             continue;
         }
         if (prev) {
@@ -190,15 +216,20 @@ esp_err_t bringup_net_connect(void)
         }
         ESP_LOGI(TAG, "  [%s] siec \"%s\", broker %s%s%s", a->label, a->ssid, a->uri,
                  a->user[0] ? " jako " : "", a->user);
-        r = try_connect(a->ssid, a->pass, a->uri, a->user, a->mpass);
+        r = try_connect(a->ssid, a->pass, a->uri, a->user, a->mpass, &wifi_ok);
         if (r == ESP_OK) {
             return ESP_OK;
         }
         prev = a;
     }
 
-    /* Ostatnia proba zostaje uruchomiona - ESP-MQTT ponawia w tle. */
-    ESP_LOGE(TAG, "  klient ponawia w tle - polaczenie moze jeszcze dojsc");
+    /* Klienci z ostatniej proby zostaja uruchomieni i ponawiaja w tle:
+     * WiFi bez konca (max_retries = -1), a gdy siec wstanie - ESP-MQTT. */
+    if (wifi_ok) {
+        ESP_LOGE(TAG, "  klient MQTT ponawia w tle - polaczenie moze jeszcze dojsc");
+    } else {
+        ESP_LOGE(TAG, "  WiFi ponawia w tle - do brokera nie doszlo ani razu");
+    }
     return r;
 }
 

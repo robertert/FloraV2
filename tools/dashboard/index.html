@@ -435,6 +435,21 @@ function drawPlots() {
 }
 
 /* ---- wiek danych: wyszarzenie kart, ktore przestaly przychodzic ---- */
+/* Karta szarzeje, gdy jej temat milczy dluzej niz ~3 okresy publikacji
+ * (hub_telemetry.c). null = temat przychodzi tylko przy polaczeniu albo
+ * zdarzeniu (z retain), wiec cisza po nim jest normalna i karta nie szarzeje. */
+const STALE_DEFAULT_S = 15;
+const STALE_AFTER_S = {
+  "config": null,          // przy polaczeniu i zmianie
+  "tele/boot": null,       // przy polaczeniu
+  "tele/ota": null,        // przy aktualizacji
+  "tele/pid": null,        // tylko w trakcie jazdy w trybie pid
+  "head/hello": null,      // po starcie glowicy
+  "tele/sys": 20,          // co 5 s
+  "tele/mast": 20,         // co 5 s albo przy zmianie
+  "head/weather": 40,      // co 10 s
+  "head/status": 20,       // co 5 s
+};
 function updateAges() {
   const now = Date.now();
   for (const card of document.querySelectorAll(".card[data-topic]")) {
@@ -443,8 +458,8 @@ function updateAges() {
     if (!t) { age.textContent = "brak danych"; card.classList.add("stale"); continue; }
     const s = (now - t) / 1000;
     age.textContent = s < 1 ? "teraz" : s.toFixed(0) + " s temu";
-    /* Ustawienia przychodza tylko przy polaczeniu i zmianie - nie starzeja sie. */
-    card.classList.toggle("stale", s > 15 && card.dataset.topic !== "config");
+    const limit = STALE_AFTER_S[card.dataset.topic] ?? STALE_DEFAULT_S;
+    card.classList.toggle("stale", limit !== null && s > limit);
   }
 }
 
@@ -493,21 +508,6 @@ $("mast-on").onclick = () => send("mast", "on");
 $("mast-off").onclick = () => send("mast", "off");
 $("stall-clear").onclick = () => send("stall_clear", "1");
 
-/* ---- OTA ---- */
-function otaProgress(d) {
-  const bar = $("ota-pct");
-  const active = ["starting", "downloading", "verifying", "rebooting"].includes(d.state);
-  bar.hidden = !active;
-  bar.value = d.pct || 0;
-}
-/* Jak przy restarcie: dwa klikniecia zamiast okna potwierdzenia. */
-function armed(button, label, action) {
-  let timer = null;
-  button.onclick = () => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-      button.textContent = label;
 /* ---- strojenie PID ---- */
 const PID_KEYS = ["pid_kp", "pid_ki", "pid_kd", "pid_kff", "pid_ks", "pid_acc", "pid_vmax"];
 
@@ -532,6 +532,21 @@ $("mode-pwm").onclick = () => send("config/drive_mode", "pwm");
 $("mode-pid").onclick = () => send("config/drive_mode", "pid");
 $("pid-step").onclick = () => send("pid_step", $("step-v").value + " " + $("step-ms").value);
 
+/* ---- OTA ---- */
+function otaProgress(d) {
+  const bar = $("ota-pct");
+  const active = ["starting", "downloading", "verifying", "rebooting"].includes(d.state);
+  bar.hidden = !active;
+  bar.value = d.pct || 0;
+}
+/* Jak przy restarcie: dwa klikniecia zamiast okna potwierdzenia. */
+function armed(button, label, action) {
+  let timer = null;
+  button.onclick = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+      button.textContent = label;
       action();
       return;
     }
