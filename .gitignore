@@ -35,3 +35,4 @@ tools/server/mosquitto/passwd
 
 # Test regulatora na komputerze, patrz components/flora_pid/host/test.c.
 components/flora_pid/host/test
+components/flora_nav/host/test

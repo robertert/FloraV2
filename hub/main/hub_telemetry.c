@@ -35,6 +35,7 @@
 #include "hub_config.h"
 #include "hub_diag.h"
 #include "hub_drive.h"
+#include "hub_nav.h"
 #include "hub_links.h"
 #include "flora_board.h"
 #include "flora_encoders.h"
@@ -147,6 +148,11 @@ static void drive_init(void)
     /* Petla predkosci startuje zawsze, ale w trybie pwm nic nie wystawia. */
     if (hub_drive_start() != ESP_OK) {
         ESP_LOGW(TAG, "petla predkosci nie wystartowala - zostaje jazda na surowej mocy");
+    }
+    /* Filtr pozycji potrzebuje tylko enkoderow; glowica i znaczniki
+     * dochodza, gdy sie pojawia. */
+    if (hub_nav_start() != ESP_OK) {
+        ESP_LOGW(TAG, "filtr pozycji nie wystartowal");
     }
 }
 
@@ -326,6 +332,46 @@ static void pub_pid(void)
                            "\"i_l\":%.1f,\"i_r\":%.1f}",
                            st.sp_l, st.sp_r, st.v_l, st.v_r, st.u_l, st.u_r,
                            st.ff_l, st.ff_r, st.i_l, st.i_r);
+}
+
+/**
+ * Wszystkie warianty EKF: glowny na tele/pose, reszta na tele/pose_<nazwa>
+ * (w Telegrafie osobne measurementy z tymi samymi polami - latwo nalozyc
+ * na jeden wykres). Payload zostaje ponizej 256 B bufora flora_mqtt.
+ */
+static void pub_pose(void)
+{
+    for (int i = 0; i < hub_nav_variant_count(); i++) {
+        hub_nav_pose_t p;
+        if (!hub_nav_get(i, &p)) {
+            continue;
+        }
+        char topic[32];
+        if (i == 0) {
+            snprintf(topic, sizeof topic, "tele/pose");
+        } else {
+            snprintf(topic, sizeof topic, "tele/pose_%s", p.name);
+        }
+        flora_mqtt_publish_fmt(topic, 0, false,
+                               "{\"x_mm\":%.0f,\"y_mm\":%.0f,\"th_deg\":%.1f,\"b_deg\":%.1f,"
+                               "\"sx_mm\":%.0f,\"sy_mm\":%.0f,\"sth_deg\":%.2f,\"spos_mm\":%.0f,"
+                               "\"src\":%u,\"n_head\":%" PRIu32 ",\"n_sun\":%" PRIu32
+                               ",\"n_tag\":%" PRIu32 ",\"n_rej\":%" PRIu32 "}",
+                               p.x_mm, p.y_mm, p.th_deg, p.b_deg, p.sx_mm, p.sy_mm, p.sth_deg,
+                               p.spos_mm, p.src, p.n_head, p.n_sun, p.n_tag, p.n_rej);
+    }
+}
+
+/** Stan bramek kompasu slonecznego - kody w hub_nav.h. */
+static void pub_nav_sun(void)
+{
+    hub_nav_status_t st;
+    hub_nav_status(&st);
+    flora_mqtt_publish_fmt("tele/nav_sun", 0, false,
+                           "{\"utc_ok\":%s,\"gate\":%d,\"sun_vs_mag_deg\":%.1f,"
+                           "\"seen\":%" PRIu32 ",\"gated\":%" PRIu32 "}",
+                           st.time_ok ? "true" : "false", st.sun_gate, st.sun_diff_deg,
+                           st.n_sun_seen, st.n_sun_gated);
 }
 
 static void pub_soil(void)
@@ -558,6 +604,8 @@ static void telemetry_task(void *arg)
         if (s_ina && DUE(tick, 500)) { pub_power(); }
         if (s_drive_ok && DUE(tick, 200)) { pub_drive(); }
         if (s_drive_ok) { pub_pid(); }
+        if (hub_nav_ready() && DUE(tick, 500)) { pub_pose(); }
+        if (hub_nav_ready() && DUE(tick, 1000)) { pub_nav_sun(); }
         if (s_soil_ok && DUE(tick, 2000)) { pub_soil(); }
         if (s_sonar_ok && DUE(tick, 500)) { pub_sonar(); }
         if (s_temp_ok) { temp_step(DUE(tick, 2000)); }

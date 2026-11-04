@@ -22,6 +22,7 @@
 
 #include "hub_config.h"
 #include "hub_drive.h"
+#include "hub_nav.h"
 #include "hub_ota.h"
 #include "hub_remote.h"
 #include "hub_telemetry.h"
@@ -161,6 +162,24 @@ static esp_err_t cmd_pid_step(const char *arg)
     return hub_drive_step(v, (uint32_t)ms);
 }
 
+/** "x_mm y_mm th_deg"; pusty payload = (0, 0, 0). */
+static esp_err_t cmd_pose_reset(const char *arg)
+{
+    float x = 0.0f, y = 0.0f, th = 0.0f;
+    if (arg[0]) {
+        char *end;
+        x = strtof(arg, &end);
+        if (end == arg || *end != ' ') return ESP_ERR_INVALID_ARG;
+        const char *p = end;
+        y = strtof(p, &end);
+        if (end == p || *end != ' ') return ESP_ERR_INVALID_ARG;
+        p = end;
+        th = strtof(p, &end);
+        if (end == p || *end) return ESP_ERR_INVALID_ARG;
+    }
+    return hub_nav_reset_pose(x, y, th);
+}
+
 static void reboot_now(void *arg)
 {
     esp_restart();
@@ -213,6 +232,7 @@ static void on_cmd(const char *topic, size_t topic_len,
     else if (strcmp(cmd, "pump") == 0)        { err = cmd_pump(arg); }
     else if (strcmp(cmd, "mast") == 0)        { err = cmd_mast(arg); }
     else if (strcmp(cmd, "pid_step") == 0)    { err = cmd_pid_step(arg); }
+    else if (strcmp(cmd, "pose_reset") == 0)  { err = cmd_pose_reset(arg); }
     else if (strcmp(cmd, "stall_clear") == 0) { err = flora_motors_clear_stall(); }
     else if (strcmp(cmd, "reboot") == 0)      { err = cmd_reboot(); }
     else if (strcmp(cmd, "ota") == 0)         { err = hub_ota_start(arg); }

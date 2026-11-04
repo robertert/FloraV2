@@ -129,6 +129,22 @@
     <canvas data-plot="tele/pid:sp_l,v_l"></canvas>
     <canvas data-plot="tele/pid:sp_r,v_r"></canvas>
     <div class="kv"></div></section>
+  <section class="card" data-topic="tele/pose"><h2>Pozycja (EKF) <span class="age"></span></h2>
+    <div class="row">
+      <button id="pose-reset">zeruj poze</button>
+      <span class="muted">x, y, kat = 0 w miejscu, gdzie robot teraz stoi</span>
+    </div>
+    <p class="muted" style="margin:8px 0 0;font-size:12px">
+      Wykres: spos_mm, najwieksza niepewnosc pozycji. Rosnie z droga,
+      spada po znaczniku.</p>
+    <canvas data-plot="tele/pose:spos_mm"></canvas>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="tele/nav_sun"><h2>Kompas sloneczny <span class="age"></span></h2>
+    <p class="muted" style="margin:0;font-size:12px">
+      gate: 0 przyjety, 1 za ciemno (lampa?), 2 noc / brak czasu UTC,
+      3 niestabilny, 4 niezgodny z magnetometrem. Warianty EKF do porownania
+      plyna na tele/pose_*.</p>
+    <div class="kv"></div></section>
   <section class="card" data-topic="tele/power"><h2>Zasilanie <span class="age"></span></h2>
     <div class="kv"></div><canvas data-plot="tele/power:a"></canvas></section>
   <section class="card" data-topic="tele/soil"><h2>Gleba <span class="age"></span></h2>
@@ -530,6 +546,7 @@ for (const k of PID_KEYS) {
 }
 $("mode-pwm").onclick = () => send("config/drive_mode", "pwm");
 $("mode-pid").onclick = () => send("config/drive_mode", "pid");
+$("pose-reset").onclick = () => send("pose_reset", "");
 $("pid-step").onclick = () => send("pid_step", $("step-v").value + " " + $("step-ms").value);
 
 /* ---- OTA ---- */

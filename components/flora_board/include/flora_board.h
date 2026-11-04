@@ -100,6 +100,32 @@
  */
 #define FLORA_WHEEL_DIAMETER_MM 124.0f
 
+/**
+ * Rozstaw kol (od srodka do srodka styku z podlozem), do odometrii i EKF.
+ *
+ * WARTOSC TYMCZASOWA: platforma testowa ma ~38-40 cm. Efektywny rozstaw
+ * (z poslizgiem i szerokoscia opony 55 mm) wyznaczyc obrotem o 90 st
+ * w tescie UMBmark i wpisac tutaj.
+ */
+#define FLORA_TRACK_MM 390.0f
+
+/* ---- Nawigacja (EKF pozycji w bryle, hub_nav) ----
+ * Polozenie poziomej kamery znacznikow w ukladzie robota (+X przod, +Y lewo,
+ * od srodka osi kol). TYMCZASOWO os masztu na docelowym korpusie (D-033);
+ * na platformie testowej zmierzyc.
+ */
+#define FLORA_NAV_CAM_X_MM 295.0f
+#define FLORA_NAV_CAM_Y_MM 0.0f
+/** Startowa wariancja drogi kola na mm drogi [mm^2/mm]; z UMBmark i jazd po trawie. */
+#define FLORA_NAV_K_WHEEL 0.5f
+
+/* Miejsce pracy - do kompasu slonecznego (pozycja slonca z daty i godziny).
+ * TYMCZASOWO Krakow; podmienic na wspolrzedne ogrodu. Deklinacja
+ * magnetyczna (wschodnia dodatnia) dla Krakowa w 2026 r. ok. +6 st. */
+#define FLORA_SITE_LAT_DEG 50.06
+#define FLORA_SITE_LON_DEG 19.94
+#define FLORA_MAG_DECLINATION_DEG 6.0f
+
 #define FLORA_COUNTS_PER_WHEEL_REV \
     (FLORA_ENCODER_PPR * FLORA_ENCODER_QUAD_MULT * FLORA_GEAR_RATIO)
 

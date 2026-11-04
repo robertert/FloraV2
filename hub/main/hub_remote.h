@@ -17,6 +17,7 @@
  *   cmd/drive_power  0..100, moc dla cmd/drive (domyslnie 30);
  *                    w trybie pid procent pid_vmax
  *   cmd/pid_step     "<mm_s> <ms>", skok predkosci do strojenia (tylko tryb pid)
+ *   cmd/pose_reset   "<x_mm> <y_mm> <th_deg>" albo pusty = (0, 0, 0), patrz hub_nav.h
  *   cmd/pump         on | off | liczba ms
  *   cmd/mast         on | off
  *   cmd/stall_clear  dowolny
