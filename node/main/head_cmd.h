@@ -27,3 +27,19 @@ bool head_cmd_take_sun_gain(uint8_t *gain_index);
 
 /** Przesuniecie zegara bryly wzgledem naszego, w mikrosekundach. */
 int64_t head_cmd_clock_offset_us(void);
+
+/** Czy przyszedl juz TIME_SYNC. */
+bool head_cmd_time_synced(void);
+
+/**
+ * Znacznik czasu do wiadomosci: chwila `local_us` (nasz esp_timer)
+ * w zegarze bryly, gdy jest synchronizacja; inaczej w naszym.
+ * Zawijanie co ~71 min jak dotad - bryla odejmuje modulo 2^32.
+ */
+uint32_t head_cmd_stamp(int64_t local_us);
+
+/** Zabiera zadanie kalibracji poziomu (krok 0, 1 albo 2). */
+bool head_cmd_take_level_cal(uint8_t *step);
+
+/** Zabiera zadanie kalibracji magnetometru (czas zbierania w s). */
+bool head_cmd_take_mag_cal(uint32_t *seconds);

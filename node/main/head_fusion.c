@@ -11,6 +11,9 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "flora_head_board.h"
+#include "flora_hkf.h"
+#include "flora_magcal.h"
+#include "flora_magdist.h"
 #include "flora_msgs.h"
 #include "flora_store.h"
 
@@ -22,16 +25,22 @@ static const char *TAG = "fusion";
 #define LOOP_HZ        60
 #define LOOP_MS        (1000 / LOOP_HZ)
 #define MAG_DIVIDER    6     /**< magnetometr 10 Hz; korekta dryfu nie musi byc szybsza */
+#define MAG_PERIOD_MS  (MAG_DIVIDER * LOOP_MS)
 #define ATT_DIVIDER    3     /**< ATTITUDE 20 Hz, zgodnie z kontraktem */
+#define INFO_DIVIDER   LOOP_HZ   /**< MAG_INFO 1 Hz */
 
 /* Po tylu nieudanych odczytach z rzedu uznajemy IMU za martwy. Jeden
  * zgubiony odczyt to normalna kolizja na magistrali, nie awaria. */
 #define FAULT_THRESHOLD 10
 
-/* Stala czasowa korekty magnetometrem. Kilka sekund: dosc wolno, by szum
- * magnetometru nie trafial do kursu, dosc szybko, by dryf zyroskopu nie
- * narastal miedzy korektami. */
-#define FUSION_TAU_S   4.0f
+/* Szum kursu z magnetometru po kalibracji. Przy przechyle wiekszym niz
+ * TILT_LIMIT korekta przechylu traci dokladnosc - pomiar wazy wtedy mniej. */
+#define MAG_SIGMA_DEG        4.0f
+#define MAG_SIGMA_TILTED_DEG 8.0f
+
+/* Bez magnetometru kurs jest tylko wzgledny wobec startu: niepewnosc
+ * kierunku bezwzglednego jest pelna. Bryla dostaje to w sigma. */
+#define NOMAG_SIGMA0_DEG     180.0f
 
 /* Przechyl, powyzej ktorego kurs przestaje byc wiarygodny i wedruje
  * flaga TILTED. Korekta dziala dalej, ale blad rosnie nieliniowo. */
@@ -43,6 +52,9 @@ static const char *TAG = "fusion";
 #define CAL_MAX_G_DEV      0.08f  /**< odstepstwo wypadkowej od 1 g */
 #define CAL_MAX_ATTEMPTS   3
 
+/* Bufor kalibracji magnetometru (~10 kB) - statycznie, poza stosem zadania. */
+static flora_magcal_collector_t s_collect;
+
 static struct {
     flora_icm20948_handle_t imu;
     flora_link_handle_t     down;
@@ -52,17 +64,37 @@ static struct {
     uint32_t  tick;
     int64_t   last_us;
 
-    float     heading;
+    /* kurs: Kalman [psi, dryf] */
+    flora_hkf_t kf;
     float     mag_heading;
-    bool      mag_valid;
+    bool      mag_valid;      /**< jest swiezy, niezaklocony pomiar */
+    bool      mag_seen;       /**< magnetometr w ogole odpowiada */
     head_attitude_t att;
+
+    /* magnetometr: kalibracja i zaklocenia */
+    flora_magcal_t  mag_cal;
+    bool            mag_cal_ok;
+    flora_magdist_t dist;
+    float     mag_h, mag_dip, mag_total;
+    bool      collecting;
+    int64_t   collect_end_us;
+
+    /* poziom akcelerometru: przekrzywienie plytki na maszcie */
+    float     lvl_off_pitch, lvl_off_roll;
+    bool      lvl_measuring;
+    uint8_t   lvl_step;
+    int       lvl_n;
+    double    lvl_sum[3];
+    float     lvl_peak_rate;
+    bool      lvl_have_first;
+    float     lvl_first_pitch, lvl_first_roll;
 
     uint8_t   att_divider;
     uint32_t  fail_streak;
     uint32_t  errors;
     bool      heading_valid;
 
-    /* kalibracja */
+    /* kalibracja zyro */
     int       cal_n;
     int       cal_attempts;
     double    cal_sum[3];
@@ -189,36 +221,332 @@ static bool cal_step(const flora_icm20948_data_t *d)
     return true;
 }
 
+/* ================= KALIBRACJA MAGNETOMETRU ================= */
+
+static void magcal_load(void)
+{
+    flora_magcal_identity(&s_f.mag_cal);
+    s_f.mag_cal_ok = false;
+    bool ok = false;
+    if (s_f.store) {
+        flora_store_get_bool(s_f.store, FLORA_HEAD_NVS_MAG_OK, &ok, false);
+    }
+    if (ok) {
+        flora_magcal_t *c = &s_f.mag_cal;
+        flora_store_get_float(s_f.store, FLORA_HEAD_NVS_MAG_OX,   &c->ox, 0.0f);
+        flora_store_get_float(s_f.store, FLORA_HEAD_NVS_MAG_OY,   &c->oy, 0.0f);
+        flora_store_get_float(s_f.store, FLORA_HEAD_NVS_MAG_W00,  &c->w[0][0], 1.0f);
+        flora_store_get_float(s_f.store, FLORA_HEAD_NVS_MAG_W01,  &c->w[0][1], 0.0f);
+        flora_store_get_float(s_f.store, FLORA_HEAD_NVS_MAG_W11,  &c->w[1][1], 1.0f);
+        flora_store_get_float(s_f.store, FLORA_HEAD_NVS_MAG_HREF, &c->h_ref_ut, 0.0f);
+        flora_store_get_float(s_f.store, FLORA_HEAD_NVS_MAG_DIP,  &c->dip_ref_deg, 0.0f);
+        c->w[1][0] = c->w[0][1];
+        s_f.mag_cal_ok = true;
+        ESP_LOGI(TAG, "kalibracja magnetometru z NVS: hard iron (%.2f, %.2f) uT, "
+                      "pole poziome %.1f uT, inklinacja %.1f st",
+                 c->ox, c->oy, c->h_ref_ut, c->dip_ref_deg);
+    } else {
+        ESP_LOGW(TAG, "magnetometr BEZ kalibracji - kurs moze miec bledy zalezne od kierunku; "
+                      "uruchom cmd/mag_cal");
+    }
+    flora_magdist_set_ref(&s_f.dist, s_f.mag_cal_ok,
+                          s_f.mag_cal.h_ref_ut, s_f.mag_cal.dip_ref_deg);
+}
+
+static void magcal_save(const flora_magcal_t *c)
+{
+    if (!s_f.store) {
+        ESP_LOGW(TAG, "brak NVS - kalibracja magnetometru tylko do restartu");
+        return;
+    }
+    flora_store_set_float(s_f.store, FLORA_HEAD_NVS_MAG_OX,   c->ox);
+    flora_store_set_float(s_f.store, FLORA_HEAD_NVS_MAG_OY,   c->oy);
+    flora_store_set_float(s_f.store, FLORA_HEAD_NVS_MAG_W00,  c->w[0][0]);
+    flora_store_set_float(s_f.store, FLORA_HEAD_NVS_MAG_W01,  c->w[0][1]);
+    flora_store_set_float(s_f.store, FLORA_HEAD_NVS_MAG_W11,  c->w[1][1]);
+    flora_store_set_float(s_f.store, FLORA_HEAD_NVS_MAG_HREF, c->h_ref_ut);
+    flora_store_set_float(s_f.store, FLORA_HEAD_NVS_MAG_DIP,  c->dip_ref_deg);
+    flora_store_set_bool(s_f.store, FLORA_HEAD_NVS_MAG_OK, true);
+}
+
+static void magcal_start(uint32_t seconds)
+{
+    flora_magcal_begin(&s_collect);
+    s_f.collecting     = true;
+    s_f.collect_end_us = esp_timer_get_time() + (int64_t)seconds * 1000000;
+    s_f.mag_valid      = false;
+    ESP_LOGW(TAG, "kalibracja magnetometru: obracaj glowica wokol pionu przez %" PRIu32
+                  " s (2-3 pelne obroty)", seconds);
+}
+
+static void magcal_finish(void)
+{
+    s_f.collecting = false;
+    flora_magcal_t cal = s_f.mag_cal;
+    flora_magcal_report_t rep = flora_magcal_fit(&s_collect, &cal);
+
+    if (rep.status == FLORA_MAGCAL_OK) {
+        s_f.mag_cal    = cal;
+        s_f.mag_cal_ok = true;
+        magcal_save(&cal);
+        flora_magdist_set_ref(&s_f.dist, true, cal.h_ref_ut, cal.dip_ref_deg);
+        ESP_LOGI(TAG, "kalibracja magnetometru OK: %u probek, %u/12 sektorow, osie %.2f, "
+                      "rozrzut %.1f%%, hard iron (%.2f, %.2f) uT",
+                 rep.n, rep.sectors, rep.axis_ratio, rep.rms_pct, cal.ox, cal.oy);
+    } else {
+        ESP_LOGE(TAG, "kalibracja magnetometru NIEUDANA: %s (%u probek, %u/12 sektorow, "
+                      "osie %.2f, rozrzut %.1f%%) - zostaje poprzednia",
+                 flora_magcal_status_name(rep.status), rep.n, rep.sectors,
+                 rep.axis_ratio, rep.rms_pct);
+    }
+
+    flora_mag_cal_result_t m = {
+        .status           = (uint8_t)rep.status,
+        .sectors          = rep.sectors,
+        .samples          = rep.n,
+        .offset_x_cut     = (int16_t)lroundf(cal.ox * 100.0f),
+        .offset_y_cut     = (int16_t)lroundf(cal.oy * 100.0f),
+        .axis_ratio_milli = (uint16_t)lroundf(fminf(rep.axis_ratio, 65.0f) * 1000.0f),
+        .rms_cpct         = (uint16_t)lroundf(fminf(rep.rms_pct, 650.0f) * 100.0f),
+        .field_h_cut      = (uint16_t)lroundf(cal.h_ref_ut * 100.0f),
+        .dip_cdeg         = (int16_t)lroundf(cal.dip_ref_deg * 100.0f),
+    };
+    /* Wynik jest jednorazowy i wazny - z potwierdzeniem. Blokuje do
+     * kilkuset ms, ale to raz na kalibracje. */
+    if (flora_link_send_reliable(s_f.down, FLORA_MSG_MAG_CAL_RESULT, &m, sizeof m, 200) != ESP_OK) {
+        ESP_LOGW(TAG, "wynik kalibracji nie dotarl do bryly");
+    }
+}
+
+/* ================= POZIOM AKCELEROMETRU =================
+ *
+ * Plytka nigdy nie lezy idealnie poziomo na maszcie, a staly blad
+ * pochylenia i przechylu wchodzi w kompensacje przechylu magnetometru.
+ * Przy inklinacji 66 st (Krakow) mnozy sie przez tan(66) ~ 2,2: plytka
+ * przekrzywiona o 2 st daje do +-4,5 st bledu kursu, zaleznie od kierunku.
+ *
+ * Pomiar w jednej pozycji widzi sume: przekrzywienie plytki + pochylosc
+ * podloza. Po obrocie robota o 180 st pochylosc podloza zmienia znak
+ * w ukladzie robota, a przekrzywienie plytki nie - srednia z dwoch
+ * pozycji daje samo przekrzywienie (dla malych katow). */
+
+static void level_load(void)
+{
+    bool ok = false;
+    if (s_f.store) {
+        flora_store_get_bool(s_f.store, FLORA_HEAD_NVS_LVL_OK, &ok, false);
+    }
+    if (ok) {
+        flora_store_get_float(s_f.store, FLORA_HEAD_NVS_LVL_PITCH, &s_f.lvl_off_pitch, 0.0f);
+        flora_store_get_float(s_f.store, FLORA_HEAD_NVS_LVL_ROLL,  &s_f.lvl_off_roll,  0.0f);
+        ESP_LOGI(TAG, "poziom z NVS: pochylenie %.2f st, przechyl %.2f st",
+                 s_f.lvl_off_pitch, s_f.lvl_off_roll);
+    } else {
+        ESP_LOGW(TAG, "poziom akcelerometru BEZ kalibracji - uruchom cmd/level_cal");
+    }
+}
+
+static void level_send(uint8_t status, float pitch, float roll)
+{
+    flora_level_cal_result_t m = {
+        .status         = status,
+        .step           = s_f.lvl_step,
+        .pitch_cdeg     = (int16_t)lroundf(pitch * 100.0f),
+        .roll_cdeg      = (int16_t)lroundf(roll * 100.0f),
+        .off_pitch_cdeg = (int16_t)lroundf(s_f.lvl_off_pitch * 100.0f),
+        .off_roll_cdeg  = (int16_t)lroundf(s_f.lvl_off_roll * 100.0f),
+    };
+    if (flora_link_send_reliable(s_f.down, FLORA_MSG_LEVEL_CAL_RESULT, &m, sizeof m, 200) != ESP_OK) {
+        ESP_LOGW(TAG, "wynik kalibracji poziomu nie dotarl do bryly");
+    }
+}
+
+static void level_start(uint8_t step)
+{
+    s_f.lvl_measuring = true;
+    s_f.lvl_step      = step;
+    s_f.lvl_n         = 0;
+    s_f.lvl_peak_rate = 0.0f;
+    memset(s_f.lvl_sum, 0, sizeof(s_f.lvl_sum));
+    ESP_LOGW(TAG, "kalibracja poziomu, krok %u: NIE RUSZAJ robota przez 2 s", step);
+}
+
+/** Jeden tick pomiaru poziomu na SUROWYM akcelerometrze (bez offsetu). */
+static void level_step(const flora_icm20948_data_t *d)
+{
+    for (int i = 0; i < 3; i++) {
+        float r = fabsf(d->gyro_dps[i]);
+        if (r > s_f.lvl_peak_rate) s_f.lvl_peak_rate = r;
+        s_f.lvl_sum[i] += d->accel_g[i];
+    }
+    float g = sqrtf(d->accel_g[0] * d->accel_g[0] + d->accel_g[1] * d->accel_g[1] +
+                    d->accel_g[2] * d->accel_g[2]);
+    if (s_f.lvl_peak_rate > CAL_MAX_RATE_DPS || fabsf(g - 1.0f) > CAL_MAX_G_DEV) {
+        s_f.lvl_measuring = false;
+        ESP_LOGW(TAG, "kalibracja poziomu przerwana - ruch w trakcie");
+        level_send(FLORA_LEVEL_CAL_MOVED, 0.0f, 0.0f);
+        return;
+    }
+    if (++s_f.lvl_n < CAL_SAMPLES) {
+        return;
+    }
+    s_f.lvl_measuring = false;
+
+    float a[3];
+    for (int i = 0; i < 3; i++) a[i] = (float)(s_f.lvl_sum[i] / CAL_SAMPLES);
+    head_attitude_t raw = head_attitude_from_accel(a);
+
+    if (s_f.lvl_step == 1) {
+        s_f.lvl_have_first  = true;
+        s_f.lvl_first_pitch = raw.pitch_deg;
+        s_f.lvl_first_roll  = raw.roll_deg;
+        ESP_LOGI(TAG, "poziom krok 1: %.2f / %.2f st - obroc robota o 180 st i wykonaj krok 2",
+                 raw.pitch_deg, raw.roll_deg);
+        level_send(FLORA_LEVEL_CAL_FIRST_OK, raw.pitch_deg, raw.roll_deg);
+        return;
+    }
+    if (s_f.lvl_step == 2 && !s_f.lvl_have_first) {
+        level_send(FLORA_LEVEL_CAL_NO_FIRST, raw.pitch_deg, raw.roll_deg);
+        return;
+    }
+
+    if (s_f.lvl_step == 2) {
+        s_f.lvl_off_pitch = 0.5f * (s_f.lvl_first_pitch + raw.pitch_deg);
+        s_f.lvl_off_roll  = 0.5f * (s_f.lvl_first_roll  + raw.roll_deg);
+        ESP_LOGI(TAG, "pochylosc podloza: %.2f / %.2f st (odjeta)",
+                 0.5f * (s_f.lvl_first_pitch - raw.pitch_deg),
+                 0.5f * (s_f.lvl_first_roll  - raw.roll_deg));
+        s_f.lvl_have_first = false;
+    } else {
+        /* Krok 0: zakladamy plaskie podloze - caly odczyt to przekrzywienie. */
+        s_f.lvl_off_pitch = raw.pitch_deg;
+        s_f.lvl_off_roll  = raw.roll_deg;
+    }
+    if (s_f.store) {
+        flora_store_set_float(s_f.store, FLORA_HEAD_NVS_LVL_PITCH, s_f.lvl_off_pitch);
+        flora_store_set_float(s_f.store, FLORA_HEAD_NVS_LVL_ROLL,  s_f.lvl_off_roll);
+        flora_store_set_bool(s_f.store, FLORA_HEAD_NVS_LVL_OK, true);
+    }
+    ESP_LOGI(TAG, "poziom zapisany: pochylenie %.2f st, przechyl %.2f st",
+             s_f.lvl_off_pitch, s_f.lvl_off_roll);
+    level_send(FLORA_LEVEL_CAL_OK, raw.pitch_deg, raw.roll_deg);
+}
+
+/* ================= MAGNETOMETR ================= */
+
+/** Odczyt magnetometru i korekta Kalmanem. Wolane co MAG_DIVIDER tickow. */
+static void mag_step(void)
+{
+    flora_icm20948_mag_t mg;
+    esp_err_t r = flora_icm20948_read_mag(s_f.imu, &mg);
+    if (r == ESP_ERR_NOT_FINISHED) {
+        return;   /* probka jeszcze nie gotowa - to nie blad */
+    }
+    if (r != ESP_OK || mg.overflow) {
+        s_f.mag_valid = false;
+        return;
+    }
+    s_f.mag_seen = true;
+
+    /* Pionowa skladowa z surowego pola - do inklinacji odniesienia przy
+     * kalibracji (przy malym przechyle offset x/y prawie jej nie zmienia). */
+    float lx, ly, lz;
+    head_mag_level(mg.field_ut, s_f.att, &lx, &ly, &lz);
+
+    if (s_f.collecting) {
+        if (!flora_magcal_add(&s_collect, mg.field_ut[0], mg.field_ut[1], lz)) {
+            s_f.collect_end_us = 0;   /* bufor pelny - konczymy wczesniej */
+        }
+        s_f.mag_valid = false;    /* surowe probki nie ida do kursu */
+        return;
+    }
+
+    float m[3] = { mg.field_ut[0], mg.field_ut[1], mg.field_ut[2] };
+    if (s_f.mag_cal_ok) {
+        flora_magcal_apply(&s_f.mag_cal, mg.field_ut[0], mg.field_ut[1], &m[0], &m[1]);
+    }
+    head_mag_level(m, s_f.att, &lx, &ly, &lz);
+    s_f.mag_h     = sqrtf(lx * lx + ly * ly);
+    s_f.mag_dip   = atan2f(lz, s_f.mag_h) * HEAD_RAD2DEG;
+    s_f.mag_total = sqrtf(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
+    s_f.mag_heading = head_heading_tilt_compensated(m, s_f.att);
+
+    bool tilted = fabsf(s_f.att.roll_deg) > TILT_LIMIT_DEG ||
+                  fabsf(s_f.att.pitch_deg) > TILT_LIMIT_DEG;
+    float sigma = tilted ? MAG_SIGMA_TILTED_DEG : MAG_SIGMA_DEG;
+
+    bool agrees = s_f.state != HEAD_FUSION_RUN ||
+                  flora_hkf_would_accept(&s_f.kf, s_f.mag_heading, sigma);
+    bool disturbed = flora_magdist_step(&s_f.dist, MAG_PERIOD_MS, s_f.mag_h, s_f.mag_dip,
+                                        s_f.mag_total, agrees);
+    s_f.mag_valid = !disturbed;
+
+    if (s_f.state == HEAD_FUSION_RUN && !disturbed) {
+        flora_hkf_update(&s_f.kf, s_f.mag_heading, sigma);
+    }
+}
+
 /* ================= TELEMETRIA ================= */
+
+static float heading_sigma(void)
+{
+    return s_f.state == HEAD_FUSION_RUN ? flora_hkf_sigma(&s_f.kf) : 0.0f;
+}
 
 static void send_attitude(int64_t sample_us, const flora_icm20948_data_t *d)
 {
     uint8_t flags = 0;
     if (s_f.heading_valid)                      flags |= FLORA_ATT_HEADING_VALID;
     if (s_f.mag_valid)                          flags |= FLORA_ATT_MAG_VALID;
+    if (s_f.dist.disturbed)                     flags |= FLORA_ATT_MAG_DISTURBED;
+    if (head_cmd_time_synced())                 flags |= FLORA_ATT_TIME_SYNCED;
     if (fabsf(s_f.att.roll_deg)  > TILT_LIMIT_DEG ||
         fabsf(s_f.att.pitch_deg) > TILT_LIMIT_DEG) flags |= FLORA_ATT_TILTED;
 
+    /* quality zostaje dla zgodnosci (panel, starsze narzedzia): liczona
+     * z sigma tak, by 2 st dawaly ~90, a 10 st ~50, jak dawniej. */
+    float sig = heading_sigma();
     uint8_t quality = 0;
     if (s_f.state == HEAD_FUSION_RUN) {
-        /* Jakosc spada przy braku magnetometru i przy duzym przechyle -
-         * bryla ma po czym wazyc ten pomiar w filtrze. */
-        quality = s_f.mag_valid ? 90 : 50;
-        if (flags & FLORA_ATT_TILTED) {
-            quality /= 2;
-        }
+        float q = 100.0f - 5.0f * sig;
+        quality = (uint8_t)(q < 0.0f ? 0.0f : q);
     }
 
     flora_attitude_t m = {
-        .timestamp_us  = (uint32_t)sample_us,
-        .heading_cdeg  = (uint16_t)lroundf(head_wrap360(s_f.heading) * 100.0f),
+        .timestamp_us  = head_cmd_stamp(sample_us),
+        .heading_cdeg  = (uint16_t)lroundf(head_wrap360(s_f.kf.psi) * 100.0f) % 36000,
         .rate_z_cdps   = (int16_t)lroundf(d->gyro_dps[2] * 100.0f),
         .pitch_cdeg    = (int16_t)lroundf(s_f.att.pitch_deg * 100.0f),
         .roll_cdeg     = (int16_t)lroundf(s_f.att.roll_deg * 100.0f),
         .quality       = quality,
         .flags         = flags,
+        .heading_sigma_cdeg = (uint16_t)lroundf(fminf(sig, 650.0f) * 100.0f),
     };
     flora_link_send(s_f.down, FLORA_MSG_ATTITUDE, &m, sizeof m);
+}
+
+static void send_mag_info(void)
+{
+    uint8_t flags = 0;
+    if (s_f.mag_cal_ok)     flags |= FLORA_MAG_CAL_OK;
+    if (s_f.dist.disturbed) flags |= FLORA_MAG_DISTURBED;
+    if (s_f.collecting)     flags |= FLORA_MAG_COLLECTING;
+
+    float bias_mdps = s_f.kf.bz * 1000.0f;
+    if (bias_mdps > 32767.0f)  bias_mdps = 32767.0f;
+    if (bias_mdps < -32767.0f) bias_mdps = -32767.0f;
+
+    flora_mag_info_t m = {
+        .timestamp_us       = head_cmd_stamp(esp_timer_get_time()),
+        .field_h_cut        = (uint16_t)lroundf(fminf(s_f.mag_h, 650.0f) * 100.0f),
+        .dip_cdeg           = (int16_t)lroundf(s_f.mag_dip * 100.0f),
+        .field_total_cut    = (uint16_t)lroundf(fminf(s_f.mag_total, 650.0f) * 100.0f),
+        .gyro_bias_mdps     = (int16_t)lroundf(bias_mdps),
+        .heading_sigma_cdeg = (uint16_t)lroundf(fminf(heading_sigma(), 650.0f) * 100.0f),
+        .flags              = flags,
+        .cause              = s_f.dist.cause,
+    };
+    flora_link_send(s_f.down, FLORA_MSG_MAG_INFO, &m, sizeof m);
 }
 
 /* ================= PETLA ================= */
@@ -284,8 +612,10 @@ static void fusion_task(void *arg)
         }
 
         s_f.att = head_attitude_from_accel(d.accel_g);
+        s_f.att.pitch_deg -= s_f.lvl_off_pitch;   /* przekrzywienie plytki */
+        s_f.att.roll_deg  -= s_f.lvl_off_roll;
 
-        /* --- kalibracja --- */
+        /* --- kalibracja zyro --- */
         if (s_f.state == HEAD_FUSION_BIAS_CAL) {
             if (cal_step(&d)) {
                 if (s_f.cal_attempts >= CAL_MAX_ATTEMPTS) {
@@ -303,48 +633,54 @@ static void fusion_task(void *arg)
             continue;
         }
 
-        /* --- magnetometr --- */
+        /* --- magnetometr (10 Hz) --- */
         if (s_f.tick % MAG_DIVIDER == 0 && flora_icm20948_has_magnetometer(s_f.imu)) {
-            flora_icm20948_mag_t mg;
-            esp_err_t r = flora_icm20948_read_mag(s_f.imu, &mg);
-            if (r == ESP_OK && !mg.overflow && head_mag_plausible(mg.field_ut)) {
-                s_f.mag_heading = head_heading_tilt_compensated(mg.field_ut, s_f.att);
-                s_f.mag_valid   = true;
-            } else if (r != ESP_ERR_NOT_FINISHED) {
-                /* NOT_FINISHED znaczy tylko "probka jeszcze nie gotowa",
-                 * czyli nie jest bledem - nie kasujemy po niej waznosci. */
-                s_f.mag_valid = false;
-            }
+            mag_step();
         }
 
         /* --- ALIGN: pierwszy kurs bezwzgledny --- */
         if (s_f.state == HEAD_FUSION_ALIGN) {
+            flora_hkf_cfg_t kcfg = FLORA_HKF_DEFAULT_CFG();
             if (s_f.mag_valid) {
-                s_f.heading = s_f.mag_heading;
+                flora_hkf_init(&s_f.kf, &kcfg, s_f.mag_heading, MAG_SIGMA_DEG);
                 s_f.heading_valid = true;
-                ESP_LOGI(TAG, "kurs ustawiony na %.1f st z magnetometru", s_f.heading);
+                ESP_LOGI(TAG, "kurs ustawiony na %.1f st z magnetometru", s_f.mag_heading);
                 go(HEAD_FUSION_RUN);
             } else if (in_state_ms() > 2000) {
                 /* Bez magnetometru kurs jest tylko wzgledny wobec startu.
-                 * Bryla rozpozna to po MAG_VALID = 0. */
+                 * Bryla rozpozna to po MAG_VALID = 0 i po ogromnej sigma. */
                 ESP_LOGW(TAG, "brak magnetometru - kurs bedzie wzgledny");
-                s_f.heading = 0.0f;
+                flora_hkf_init(&s_f.kf, &kcfg, 0.0f, NOMAG_SIGMA0_DEG);
                 s_f.heading_valid = true;
                 go(HEAD_FUSION_RUN);
             } else {
                 continue;
             }
+            s_f.last_us = sample_us;
         }
 
-        /* --- RUN: fuzja --- */
+        /* --- RUN: predykcja z zyroskopu --- */
         float dt_s = (float)(sample_us - s_f.last_us) / 1000000.0f;
         s_f.last_us = sample_us;
         if (dt_s > 0.0f && dt_s < 0.5f) {
-            s_f.heading = head_fuse_heading(s_f.heading, d.gyro_dps[2], dt_s,
-                                            s_f.mag_heading, s_f.mag_valid,
-                                            FUSION_TAU_S);
+            flora_hkf_predict(&s_f.kf, d.gyro_dps[2], dt_s);
         }
 
+        /* --- komendy kalibracji --- */
+        uint8_t lstep;
+        if (!s_f.lvl_measuring && head_cmd_take_level_cal(&lstep)) {
+            level_start(lstep);
+        }
+        if (s_f.lvl_measuring) {
+            level_step(&d);
+        }
+        uint32_t secs;
+        if (head_cmd_take_mag_cal(&secs)) {
+            magcal_start(secs);
+        }
+        if (s_f.collecting && sample_us >= s_f.collect_end_us) {
+            magcal_finish();
+        }
         if (head_cmd_take_gyro_cal()) {
             s_f.cal_attempts = 0;
             go(HEAD_FUSION_BIAS_CAL);
@@ -354,6 +690,9 @@ static void fusion_task(void *arg)
 
         if (s_f.tick % s_f.att_divider == 0) {
             send_attitude(sample_us, &d);
+        }
+        if (s_f.tick % INFO_DIVIDER == 0 && s_f.mag_seen) {
+            send_mag_info();
         }
     }
 }
@@ -370,18 +709,23 @@ esp_err_t head_fusion_start(flora_icm20948_handle_t imu, flora_link_handle_t dow
     s_f.state_entered_us = esp_timer_get_time();
 
     if (flora_store_open(FLORA_HEAD_NVS_NS, &s_f.store) != ESP_OK) {
-        ESP_LOGW(TAG, "NVS niedostepne - offset zyro nie bedzie zapamietywany");
+        ESP_LOGW(TAG, "NVS niedostepne - offset zyro i kalibracja magnetometru nie beda zapamietywane");
         s_f.store = NULL;
     }
 
+    flora_magdist_cfg_t dcfg = FLORA_MAGDIST_DEFAULT_CFG();
+    flora_magdist_init(&s_f.dist, &dcfg);
+    magcal_load();
+    level_load();
+
     ESP_RETURN_ON_FALSE(xTaskCreate(fusion_task, "head_fusion", 4096, NULL, 10, NULL) == pdPASS,
                         ESP_ERR_NO_MEM, TAG, "nie udalo sie utworzyc zadania");
-    ESP_LOGI(TAG, "zadanie %d Hz, ATTITUDE co %d tick = %d Hz",
+    ESP_LOGI(TAG, "zadanie %d Hz, ATTITUDE co %d tick = %d Hz, Kalman kursu [psi, dryf]",
              LOOP_HZ, ATT_DIVIDER, LOOP_HZ / ATT_DIVIDER);
     return ESP_OK;
 }
 
 head_fusion_state_t head_fusion_state(void)  { return s_f.state; }
-float    head_fusion_heading(void)           { return s_f.heading; }
+float    head_fusion_heading(void)           { return s_f.kf.psi; }
 bool     head_fusion_heading_valid(void)     { return s_f.heading_valid; }
 uint32_t head_fusion_errors(void)            { return s_f.errors; }

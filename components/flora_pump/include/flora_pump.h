@@ -128,6 +128,12 @@ esp_err_t flora_pump_run_ms(uint32_t ms);
 /** Jak wyzej, ale czeka do konca dozowania. */
 esp_err_t flora_pump_run_ms_blocking(uint32_t ms, uint32_t timeout_ms);
 
+/**
+ * Ustawia wydajnosc w czasie pracy (kalibracja: zadany czas pompowania do
+ * menzurki, ml / s). 0 wylacza dozowanie objetosciowe.
+ */
+esp_err_t flora_pump_set_ml_per_second(float ml_per_second);
+
 /** Dozowanie objetosciowe. Wymaga ml_per_second w konfiguracji. */
 esp_err_t flora_pump_dose_ml(float ml);
 

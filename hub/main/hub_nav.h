@@ -28,8 +28,9 @@
  * ktore odsiewaja lampe we wnetrzu, odbicia i slonce nisko. Do EKF trafia
  * najwyzej jeden pomiar na 5 s.
  *
- * OGRANICZENIE: pomiary stosowane w chwili odbioru, bez kompensacji
- * opoznienia (bryla nie wysyla jeszcze TIME_SYNC).
+ * OPOZNIENIE: kurs z glowicy jest przesuwany o obrot od chwili pomiaru
+ * (rate_z * wiek), gdy glowica ma TIME_SYNC (hub_links co 10 s). Slonce
+ * i znaczniki stosowane w chwili odbioru - wolne albo na postoju.
  */
 #pragma once
 
@@ -61,6 +62,7 @@ typedef struct {
     float    sun_diff_deg; /**< slonce minus magnetometr przy ostatniej ocenie */
     uint32_t n_sun_seen;   /**< pomiary slonca z valid=1 */
     uint32_t n_sun_gated;  /**< odrzucone przez bramki 1-4 */
+    int32_t  att_age_ms;   /**< wiek probki kursu z glowicy; -1 bez TIME_SYNC */
 } hub_nav_status_t;
 
 /** Startuje filtry. Wymaga zainicjalizowanych enkoderow i hub_links. */

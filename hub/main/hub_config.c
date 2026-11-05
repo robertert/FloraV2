@@ -15,6 +15,8 @@
 
 #include "hub_config.h"
 #include "hub_drive.h"
+#include "hub_sensorcal.h"
+#include "flora_pump.h"
 #include "flora_board.h"
 #include "flora_mqtt.h"
 #include "flora_soil.h"
@@ -112,6 +114,32 @@ static esp_err_t set_pid(int idx, const char *value)
     return err;
 }
 
+/** Liczba w FLORA_NVS_NS_CALIB z zakresem; "-" kasuje klucz. */
+static esp_err_t set_cal_float(const char *key, const char *value, float lo, float hi)
+{
+    flora_store_t h;
+    esp_err_t err;
+    if (strcmp(value, "-") == 0) {
+        err = flora_store_open(FLORA_NVS_NS_CALIB, &h);
+        if (err == ESP_OK) {
+            err = flora_store_erase_key(h, key);
+            flora_store_close(h);
+        }
+        return err;
+    }
+    char *end;
+    float v = strtof(value, &end);
+    if (end == value || *end || !isfinite(v) || v < lo || v > hi) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    err = flora_store_open(FLORA_NVS_NS_CALIB, &h);
+    if (err == ESP_OK) {
+        err = flora_store_set_float(h, key, v);
+        flora_store_close(h);
+    }
+    return err;
+}
+
 static esp_err_t set_drive_mode(const char *value)
 {
     if (strcmp(value, "pwm") != 0 && strcmp(value, "pid") != 0 && strcmp(value, "-") != 0) {
@@ -149,6 +177,15 @@ esp_err_t hub_config_set(const char *key, const char *value)
         err = set_soil(FLORA_NVS_SOIL_WET, value);
     } else if (strcmp(key, FLORA_NVS_DRIVE_MODE) == 0) {
         err = set_drive_mode(value);
+    } else if (strcmp(key, FLORA_NVS_PUMP_ML_S) == 0) {
+        err = set_cal_float(FLORA_NVS_PUMP_ML_S, value, 0.01f, 100.0f);
+        if (err == ESP_OK) {
+            /* Dziala od razu; "-" (kasowanie) zeruje = tylko dawki w ms. */
+            flora_pump_set_ml_per_second(hub_sensorcal_pump_ml_s());
+        }
+    } else if (strcmp(key, FLORA_NVS_INA_SHUNT) == 0) {
+        /* Po restarcie - patrz hub_sensorcal.h. */
+        err = set_cal_float(FLORA_NVS_INA_SHUNT, value, 5.0f, 20.0f);
     } else {
         int idx = -1;
         for (size_t i = 0; i < sizeof PID_KEYS / sizeof PID_KEYS[0]; i++) {
@@ -192,6 +229,7 @@ void hub_config_publish(void)
     float kff = FLORA_PID_KFF_DEFAULT, ks = FLORA_PID_KS_DEFAULT;
     float acc = FLORA_PID_ACC_DEFAULT, vmax = FLORA_PID_VMAX_DEFAULT;
     char mode[8] = "pwm";
+    float ina_saved = FLORA_SHUNT_MILLIOHM;
     if (flora_store_open(FLORA_NVS_NS_CALIB, &h) == ESP_OK) {
         flora_store_get_i32(h, FLORA_NVS_SOIL_DRY, &dry, FLORA_SOIL_RAW_DRY);
         flora_store_get_i32(h, FLORA_NVS_SOIL_WET, &wet, FLORA_SOIL_RAW_WET);
@@ -203,6 +241,7 @@ void hub_config_publish(void)
         flora_store_get_float(h, FLORA_NVS_PID_ACC,  &acc,  FLORA_PID_ACC_DEFAULT);
         flora_store_get_float(h, FLORA_NVS_PID_VMAX, &vmax, FLORA_PID_VMAX_DEFAULT);
         flora_store_get_str(h, FLORA_NVS_DRIVE_MODE, mode, sizeof mode, "pwm");
+        flora_store_get_float(h, FLORA_NVS_INA_SHUNT, &ina_saved, FLORA_SHUNT_MILLIOHM);
         flora_store_close(h);
     }
 
@@ -218,11 +257,20 @@ void hub_config_publish(void)
         if (*c == '"' || *c == '\\') { *c = '\''; }
     }
     /* Retain: panel otwarty pozniej od razu widzi ustawienia. */
+    /* Trzy tematy zamiast jednego: razem przekraczaly 256 B bufora
+     * flora_mqtt przy dluzszym adresie brokera i JSON wychodzil uciety. */
     flora_mqtt_publish_fmt("config", 1, true,
                            "{\"wifi_ssid\":\"%s\",\"mqtt_uri\":\"%s\",\"mqtt_user\":\"%s\","
-                           "\"soil_dry\":%ld,\"soil_wet\":%ld,"
-                           "\"drive_mode\":\"%s\",\"pid_kp\":%g,\"pid_ki\":%g,\"pid_kd\":%g,"
+                           "\"soil_dry\":%ld,\"soil_wet\":%ld}",
+                           ssid, uri, muser, (long)dry, (long)wet);
+    flora_mqtt_publish_fmt("config_drive", 1, true,
+                           "{\"drive_mode\":\"%s\",\"pid_kp\":%g,\"pid_ki\":%g,\"pid_kd\":%g,"
                            "\"pid_kff\":%g,\"pid_ks\":%g,\"pid_acc\":%g,\"pid_vmax\":%g}",
-                           ssid, uri, muser, (long)dry, (long)wet,
                            mode, kp, ki, kd, kff, ks, acc, vmax);
+    /* ina_shunt: zapisany w NVS; ina_shunt_active: uzywany teraz (rozne
+     * do restartu po cmd/ina_cal). */
+    flora_mqtt_publish_fmt("config_cal", 1, true,
+                           "{\"pump_ml_s\":%g,\"ina_shunt\":%g,\"ina_shunt_active\":%g}",
+                           hub_sensorcal_pump_ml_s(),
+                           ina_saved, hub_sensorcal_ina_shunt_active());
 }

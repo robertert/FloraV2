@@ -169,6 +169,19 @@
 #define FLORA_HEAD_NVS_GYRO_Y    "gyro_bias_y"
 #define FLORA_HEAD_NVS_GYRO_Z    "gyro_bias_z"
 #define FLORA_HEAD_NVS_GYRO_OK   "gyro_cal_ok"
+/* Kalibracja magnetometru (flora_magcal): hard iron, soft iron, odniesienie. */
+#define FLORA_HEAD_NVS_MAG_OX    "mag_ox"
+#define FLORA_HEAD_NVS_MAG_OY    "mag_oy"
+#define FLORA_HEAD_NVS_MAG_W00   "mag_w00"
+#define FLORA_HEAD_NVS_MAG_W01   "mag_w01"
+#define FLORA_HEAD_NVS_MAG_W11   "mag_w11"
+#define FLORA_HEAD_NVS_MAG_HREF  "mag_href"
+#define FLORA_HEAD_NVS_MAG_DIP   "mag_dip"
+#define FLORA_HEAD_NVS_MAG_OK    "mag_cal_ok"
+/* Poziom akcelerometru: przekrzywienie plytki wzgledem masztu [st]. */
+#define FLORA_HEAD_NVS_LVL_PITCH "lvl_pitch"
+#define FLORA_HEAD_NVS_LVL_ROLL  "lvl_roll"
+#define FLORA_HEAD_NVS_LVL_OK    "lvl_ok"
 
 /* ---- Adresy na magistrali ---- */
 #define FLORA_HEAD_ADDR_MUX     0x70  /**< TCA9548A, A0-A2 do masy */

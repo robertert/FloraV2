@@ -101,6 +101,8 @@ static struct {
     SemaphoreHandle_t lock;
     bool              ready;
 
+    int32_t  att_age_ms;      /**< wiek ostatniej probki kursu; -1 bez TIME_SYNC */
+
     /* ostatni kurs z glowicy, do bramki zgodnosci slonca */
     float    head_psi;
     bool     head_mag;
@@ -110,7 +112,7 @@ static struct {
     flora_sungate_result_t sun_gate;
     float    sun_diff_deg;
     uint32_t n_sun_seen, n_sun_gated;
-} s_n = { .sun_gate = FLORA_SUNGATE_NONE };
+} s_n = { .sun_gate = FLORA_SUNGATE_NONE, .att_age_ms = -1 };
 
 /** Pomiar kursu przygotowany dla wariantow w biezacym takcie. */
 typedef struct {
@@ -119,8 +121,7 @@ typedef struct {
 } heading_meas_t;
 
 /**
- * Niepewnosc kursu z `quality` glowicy. Tymczasowo: docelowo glowica
- * wysle sigma wprost (pole w ATTITUDE, podbicie FLORA_MSGS_VERSION).
+ * Zapasowa niepewnosc kursu z `quality`, gdy glowica nie podala sigma.
  * 90 (z magnetometrem) -> 4 st, 50 (sam zyroskop) -> 16 st.
  */
 static float head_sigma_rad(uint8_t quality)
@@ -146,7 +147,20 @@ static heading_meas_t take_heading(int64_t now_us, uint32_t *seq, int64_t *last_
         !(att.flags & FLORA_ATT_HEADING_VALID)) {
         return m;
     }
-    float psi = D2R(att.heading_cdeg / 100.0f);
+    float psi_deg = att.heading_cdeg / 100.0f;
+
+    /* Wiek probki: przy TIME_SYNC znacznik jest w naszym zegarze (mlodsze
+     * 32 bity, odejmowanie modulo 2^32). Kurs przesuwamy o obrot od chwili
+     * pomiaru do teraz - rate_z ma ten sam znak co kurs glowicy. */
+    s_n.att_age_ms = -1;
+    if (att.flags & FLORA_ATT_TIME_SYNCED) {
+        int32_t age_us = (int32_t)((uint32_t)esp_timer_get_time() - att.timestamp_us);
+        if (age_us >= 0 && age_us < 500000) {
+            s_n.att_age_ms = age_us / 1000;
+            psi_deg += (att.rate_z_cdps / 100.0f) * (age_us / 1e6f);
+        }
+    }
+    float psi = D2R(psi_deg);
 
     /* Kazda probka odswieza odniesienie dla bramki slonca, niezaleznie
      * od tego, czy trafi do EKF. */
@@ -160,7 +174,10 @@ static heading_meas_t take_heading(int64_t now_us, uint32_t *seq, int64_t *last_
     *last_us = now_us;
     m.valid = true;
     m.psi   = psi;
-    m.sigma = head_sigma_rad(att.quality);
+    /* Glowica (kontrakt v4) wysyla niepewnosc z Kalmana; quality zostaje
+     * tylko jako zapas, gdyby pole bylo zerem. */
+    m.sigma = att.heading_sigma_cdeg > 0 ? D2R(att.heading_sigma_cdeg / 100.0f)
+                                         : head_sigma_rad(att.quality);
     return m;
 }
 
@@ -396,6 +413,7 @@ void hub_nav_status(hub_nav_status_t *out)
     out->sun_diff_deg = s_n.sun_diff_deg;
     out->n_sun_seen   = s_n.n_sun_seen;
     out->n_sun_gated  = s_n.n_sun_gated;
+    out->att_age_ms   = s_n.att_age_ms;
     xSemaphoreGive(s_n.lock);
 }
 

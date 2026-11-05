@@ -234,6 +234,17 @@ esp_err_t flora_pump_run_ms_blocking(uint32_t ms, uint32_t timeout_ms)
     return ESP_OK;
 }
 
+esp_err_t flora_pump_set_ml_per_second(float ml_per_second)
+{
+    ESP_RETURN_ON_FALSE(s_p.initialized, ESP_ERR_INVALID_STATE, TAG, "nie zainicjalizowano");
+    ESP_RETURN_ON_FALSE(ml_per_second >= 0.0f, ESP_ERR_INVALID_ARG, TAG, "wydajnosc ujemna");
+    xSemaphoreTake(s_p.lock, portMAX_DELAY);
+    s_p.cfg.ml_per_second = ml_per_second;
+    xSemaphoreGive(s_p.lock);
+    ESP_LOGI(TAG, "wydajnosc: %.2f ml/s", ml_per_second);
+    return ESP_OK;
+}
+
 esp_err_t flora_pump_dose_ml(float ml)
 {
     ESP_RETURN_ON_FALSE(s_p.initialized, ESP_ERR_INVALID_STATE, TAG, "nie zainicjalizowano");

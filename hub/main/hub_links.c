@@ -12,6 +12,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "hub_links.h"
 #include "flora_board.h"
@@ -35,11 +36,36 @@ static slot_t s_slots[] = {
     { .type = FLORA_MSG_OBSTACLES },
     { .type = FLORA_MSG_TAGS },
     { .type = FLORA_MSG_CAM_STATUS },
+    { .type = FLORA_MSG_MAG_INFO },
+    { .type = FLORA_MSG_MAG_CAL_RESULT },
+    { .type = FLORA_MSG_LEVEL_CAL_RESULT },
 };
 #define SLOT_COUNT (sizeof(s_slots) / sizeof(s_slots[0]))
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static flora_link_handle_t s_link;
+static esp_timer_handle_t s_sync_timer;
+
+/* TIME_SYNC: glowica przelicza wtedy znaczniki czasu na nasz zegar, wiec
+ * wiek probki kursu liczymy wprost. Wysylane przy kazdym podniesieniu
+ * lacza i co 10 s - bez potwierdzenia, nastepna probka i tak przyjdzie,
+ * a dryf kwarcow (~20 ppm) daje ~0,2 ms na 10 s. Opoznienie UART
+ * (~1-2 ms) pomijamy. */
+#define SYNC_EVERY_US 10000000
+
+static void send_time_sync(void)
+{
+    if (!s_link) {
+        return;
+    }
+    flora_time_sync_t t = { .bottom_us = (uint32_t)esp_timer_get_time() };
+    flora_link_send(s_link, FLORA_MSG_TIME_SYNC, &t, sizeof t);
+}
+
+static void sync_timer_cb(void *arg)
+{
+    send_time_sync();
+}
 
 flora_link_handle_t hub_links_handle(void) { return s_link; }
 
@@ -77,6 +103,9 @@ static void on_msg(uint8_t type, const void *payload, uint8_t len, void *ctx)
 static void on_state(bool up, void *ctx)
 {
     ESP_LOGI(TAG, "glowica: %s", up ? "polaczona" : "rozlaczona");
+    if (up) {
+        send_time_sync();
+    }
 }
 
 esp_err_t hub_links_start(void)
@@ -97,6 +126,13 @@ esp_err_t hub_links_start(void)
     }
     for (size_t i = 0; i < SLOT_COUNT; i++) {
         flora_link_on(s_link, s_slots[i].type, on_msg, &s_slots[i]);
+    }
+
+    const esp_timer_create_args_t targs = { .callback = sync_timer_cb, .name = "time_sync" };
+    if (esp_timer_create(&targs, &s_sync_timer) == ESP_OK) {
+        esp_timer_start_periodic(s_sync_timer, SYNC_EVERY_US);
+    } else {
+        ESP_LOGW(TAG, "brak timera TIME_SYNC - wiek probek glowicy nieznany");
     }
     return ESP_OK;
 }

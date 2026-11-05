@@ -145,6 +145,44 @@
       3 niestabilny, 4 niezgodny z magnetometrem. Warianty EKF do porownania
       plyna na tele/pose_*.</p>
     <div class="kv"></div></section>
+  <section class="card" data-topic="head/mag"><h2>Magnetometr <span class="age"></span></h2>
+    <div class="row">
+      <button id="magcal-auto">kalibruj (obrot robota 40 s)</button>
+      <button id="magcal-manual">kalibruj (recznie 60 s)</button>
+      <button id="gyrocal">kalibruj zyro</button>
+    </div>
+    <div class="row">
+      <button id="level-auto">poziom (auto, obrot 180)</button>
+      <button id="level-flat">poziom (plasko)</button>
+      <span class="muted">poziom PRZED magnetometrem</span>
+    </div>
+    <p class="muted" style="margin:8px 0 0;font-size:12px">
+      Kalibracja z dala od aut, stali i zbrojonego betonu. Recznie: 2-3 pelne
+      obroty wokol pionu. Zyro: robot nieruchomo 2 s. Wykres: pole poziome
+      (skok = zaklocenie).</p>
+    <canvas data-plot="head/mag:field_h_ut"></canvas>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/mag_cal"><h2>Ostatnia kalibracja magnetometru <span class="age"></span></h2>
+    <p class="muted" style="margin:0;font-size:12px">
+      cal_status: 0 ok, 1 za malo probek, 2 niepelny obrot, 3 brak elipsy,
+      4 duzy rozrzut, 5 elipsa zbyt splaszczona (zelazo przy czujniku).</p>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/level_cal"><h2>Ostatnia kalibracja poziomu <span class="age"></span></h2>
+    <p class="muted" style="margin:0;font-size:12px">
+      lvl_status: 0 zapisane, 1 ruch w trakcie, 2 brak kroku 1, 3 krok 1 ok (obroc o 180 i krok 2).</p>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="config_cal"><h2>Kalibracje bryly <span class="age"></span></h2>
+    <div class="row">
+      pompka: <button id="pump-10s">pompuj 10 s</button>
+      zmierzone <input id="pump-ml" type="number" step="1" style="width:70px"> ml
+      <button id="pump-cal">zapisz</button>
+    </div>
+    <div class="row">
+      INA226: multimetr <input id="ina-a" type="number" step="0.001" style="width:70px"> A
+      <button id="ina-cal">zapisz</button>
+      <span class="muted">(prad >= 0,3 A, dziala po restarcie)</span>
+    </div>
+    <div class="kv"></div></section>
   <section class="card" data-topic="tele/power"><h2>Zasilanie <span class="age"></span></h2>
     <div class="kv"></div><canvas data-plot="tele/power:a"></canvas></section>
   <section class="card" data-topic="tele/soil"><h2>Gleba <span class="age"></span></h2>
@@ -336,7 +374,7 @@ function onMessage(topic, buf) {
   const card = document.querySelector('.card[data-topic="' + rel + '"]');
   if (card) { renderKv(card.querySelector(".kv"), data); }
   if (rel === "tele/ota") { otaProgress(data); }
-  if (rel === "config") { pidConfig(data); }
+  if (rel === "config_drive") { pidConfig(data); }
 
   for (const [k, v] of Object.entries(data)) {
     if (typeof v !== "number") { continue; }
@@ -459,6 +497,10 @@ const STALE_AFTER_S = {
   "config": null,          // przy polaczeniu i zmianie
   "tele/boot": null,       // przy polaczeniu
   "tele/ota": null,        // przy aktualizacji
+  "head/mag_cal": null,    // po kalibracji (retain)
+  "head/level_cal": null,  // po kalibracji (retain)
+  "config_drive": null,    // przy polaczeniu i zmianie
+  "config_cal": null,      // przy polaczeniu i zmianie
   "tele/pid": null,        // tylko w trakcie jazdy w trybie pid
   "head/hello": null,      // po starcie glowicy
   "tele/sys": 20,          // co 5 s
@@ -546,6 +588,14 @@ for (const k of PID_KEYS) {
 }
 $("mode-pwm").onclick = () => send("config/drive_mode", "pwm");
 $("mode-pid").onclick = () => send("config/drive_mode", "pid");
+$("level-auto").onclick = () => send("level_cal", "auto");
+$("level-flat").onclick = () => send("level_cal", "flat");
+$("pump-10s").onclick = () => send("pump", "10000");
+$("pump-cal").onclick = () => send("pump_cal", $("pump-ml").value);
+$("ina-cal").onclick = () => send("ina_cal", $("ina-a").value);
+$("magcal-auto").onclick = () => send("mag_cal", "auto 40");
+$("magcal-manual").onclick = () => send("mag_cal", "manual 60");
+$("gyrocal").onclick = () => send("head_gyro_cal", "1");
 $("pose-reset").onclick = () => send("pose_reset", "");
 $("pid-step").onclick = () => send("pid_step", $("step-v").value + " " + $("step-ms").value);
 

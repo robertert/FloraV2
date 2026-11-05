@@ -36,6 +36,7 @@
 #include "hub_diag.h"
 #include "hub_drive.h"
 #include "hub_nav.h"
+#include "hub_sensorcal.h"
 #include "hub_links.h"
 #include "flora_board.h"
 #include "flora_encoders.h"
@@ -66,8 +67,11 @@ static bool s_drive_ok, s_pump_ok, s_soil_ok, s_sonar_ok, s_temp_ok;
 
 /** Powod ostatniego zakonczenia pompki; -1 gdy jeszcze nie pracowala. */
 static volatile int s_pump_last_reason = -1;
+static volatile uint32_t s_pump_last_ms;
 
 flora_pwrsw_handle_t hub_telemetry_mast(void) { return s_mast; }
+flora_ina226_handle_t hub_telemetry_ina(void)  { return s_ina; }
+uint32_t hub_telemetry_pump_last_ms(void)      { return s_pump_last_ms; }
 
 /* ================= ZRODLA DLA STRAZNIKA UTYKU ================= */
 
@@ -97,6 +101,7 @@ static void pump_done(flora_pump_done_reason_t reason, uint32_t ran_ms, void *ct
 {
     /* Wolane z timera pompki - tylko zapamietujemy, publikuje zadanie. */
     s_pump_last_reason = (int)reason;
+    s_pump_last_ms     = ran_ms;
 }
 
 /* ================= INICJALIZACJA SPRZETU ================= */
@@ -176,9 +181,12 @@ static void pump_init(void)
     cfg.max_run_ms      = HUB_PUMP_MAX_RUN_MS;
     cfg.min_interval_ms = DEBUG_PUMP_INTERVAL_MS;
     cfg.done_cb         = pump_done;
+    cfg.ml_per_second   = hub_sensorcal_pump_ml_s();
     s_pump_ok = (flora_pump_init(&cfg) == ESP_OK);
     if (!s_pump_ok) {
         ESP_LOGW(TAG, "pompka niedostepna");
+    } else if (cfg.ml_per_second <= 0.0f) {
+        ESP_LOGW(TAG, "pompka bez kalibracji wydajnosci - dawki tylko w ms (cmd/pump_cal)");
     }
 }
 
@@ -369,9 +377,9 @@ static void pub_nav_sun(void)
     hub_nav_status(&st);
     flora_mqtt_publish_fmt("tele/nav_sun", 0, false,
                            "{\"utc_ok\":%s,\"gate\":%d,\"sun_vs_mag_deg\":%.1f,"
-                           "\"seen\":%" PRIu32 ",\"gated\":%" PRIu32 "}",
+                           "\"seen\":%" PRIu32 ",\"gated\":%" PRIu32 ",\"att_age_ms\":%" PRId32 "}",
                            st.time_ok ? "true" : "false", st.sun_gate, st.sun_diff_deg,
-                           st.n_sun_seen, st.n_sun_gated);
+                           st.n_sun_seen, st.n_sun_gated, st.att_age_ms);
 }
 
 static void pub_soil(void)
@@ -396,7 +404,10 @@ static void pub_sonar(void)
         mm = NAN;
     }
     char b[16];
-    flora_mqtt_publish_fmt("tele/sonar", 0, false, "{\"mm\":%s}", num(b, sizeof b, mm, 0));
+    /* Predkosc dzwieku wprost w telemetrii - widac, czy korekta
+     * temperatury dziala (343 m/s przy 20 st C, 331 przy 0). */
+    flora_mqtt_publish_fmt("tele/sonar", 0, false, "{\"mm\":%s,\"sound_m_s\":%.1f}",
+                           num(b, sizeof b, mm, 0), flora_sonar_speed_of_sound());
 }
 
 /**
@@ -491,6 +502,7 @@ static void pub_link(void)
 static void pub_head(bool attitude_due)
 {
     static uint32_t seq_hello, seq_att, seq_sun, seq_wx, seq_st, seq_obs, seq_tags, seq_cam;
+    static uint32_t seq_mag, seq_magcal, seq_lvl;
 
     flora_hello_t hello;
     if (hub_links_get(FLORA_MSG_HELLO, &hello, sizeof hello, &seq_hello)) {
@@ -503,12 +515,19 @@ static void pub_head(bool attitude_due)
      * seq miedzy publikacjami, wiec zawsze idzie najswiezsza probka. */
     flora_attitude_t a;
     if (attitude_due && hub_links_get(FLORA_MSG_ATTITUDE, &a, sizeof a, &seq_att)) {
+        /* Wiek probki tylko przy TIME_SYNC - inaczej znacznik jest
+         * w zegarze glowicy i roznica nic nie znaczy (-1). */
+        long age_ms = -1;
+        if (a.flags & FLORA_ATT_TIME_SYNCED) {
+            age_ms = (long)((int32_t)((uint32_t)esp_timer_get_time() - a.timestamp_us) / 1000);
+        }
         flora_mqtt_publish_fmt("head/attitude", 0, false,
-                               "{\"hdg_deg\":%.2f,\"rate_dps\":%.2f,\"pitch_deg\":%.2f,"
-                               "\"roll_deg\":%.2f,\"q\":%u,\"flags\":%u}",
-                               a.heading_cdeg / 100.0f, a.rate_z_cdps / 100.0f,
-                               a.pitch_cdeg / 100.0f, a.roll_cdeg / 100.0f,
-                               a.quality, a.flags);
+                               "{\"hdg_deg\":%.2f,\"sigma_deg\":%.2f,\"rate_dps\":%.2f,"
+                               "\"pitch_deg\":%.2f,\"roll_deg\":%.2f,\"q\":%u,\"flags\":%u,"
+                               "\"age_ms\":%ld}",
+                               a.heading_cdeg / 100.0f, a.heading_sigma_cdeg / 100.0f,
+                               a.rate_z_cdps / 100.0f, a.pitch_cdeg / 100.0f,
+                               a.roll_cdeg / 100.0f, a.quality, a.flags, age_ms);
     }
 
     flora_sun_t s;
@@ -523,8 +542,55 @@ static void pub_head(bool attitude_due)
                                s.valid ? "true" : "false");
     }
 
+    /* Diagnostyka magnetometru 1 Hz - test D-009 (silniki on/off). */
+    flora_mag_info_t mi;
+    if (hub_links_get(FLORA_MSG_MAG_INFO, &mi, sizeof mi, &seq_mag)) {
+        flora_mqtt_publish_fmt("head/mag", 0, false,
+                               "{\"field_h_ut\":%.2f,\"dip_deg\":%.2f,\"field_ut\":%.2f,"
+                               "\"gyro_bias_dps\":%.3f,\"hdg_sigma_deg\":%.2f,"
+                               "\"mag_cal_ok\":%s,\"mag_disturbed\":%s,\"mag_collecting\":%s,"
+                               "\"dist_cause\":%u}",
+                               mi.field_h_cut / 100.0f, mi.dip_cdeg / 100.0f,
+                               mi.field_total_cut / 100.0f, mi.gyro_bias_mdps / 1000.0f,
+                               mi.heading_sigma_cdeg / 100.0f,
+                               (mi.flags & FLORA_MAG_CAL_OK) ? "true" : "false",
+                               (mi.flags & FLORA_MAG_DISTURBED) ? "true" : "false",
+                               (mi.flags & FLORA_MAG_COLLECTING) ? "true" : "false",
+                               mi.cause);
+    }
+
+    /* Wynik kalibracji - retain, zeby panel otwarty pozniej go widzial. */
+    flora_mag_cal_result_t mc;
+    if (hub_links_get(FLORA_MSG_MAG_CAL_RESULT, &mc, sizeof mc, &seq_magcal)) {
+        flora_mqtt_publish_fmt("head/mag_cal", 1, true,
+                               "{\"cal_status\":%u,\"sectors\":%u,\"samples\":%u,"
+                               "\"off_x_ut\":%.2f,\"off_y_ut\":%.2f,\"axis_ratio\":%.3f,"
+                               "\"rms_pct\":%.2f,\"ref_h_ut\":%.2f,\"ref_dip_deg\":%.2f}",
+                               mc.status, mc.sectors, mc.samples,
+                               mc.offset_x_cut / 100.0f, mc.offset_y_cut / 100.0f,
+                               mc.axis_ratio_milli / 1000.0f, mc.rms_cpct / 100.0f,
+                               mc.field_h_cut / 100.0f, mc.dip_cdeg / 100.0f);
+    }
+
+    flora_level_cal_result_t lc;
+    if (hub_links_get(FLORA_MSG_LEVEL_CAL_RESULT, &lc, sizeof lc, &seq_lvl)) {
+        flora_mqtt_publish_fmt("head/level_cal", 1, true,
+                               "{\"lvl_status\":%u,\"step\":%u,\"meas_pitch_deg\":%.2f,"
+                               "\"meas_roll_deg\":%.2f,\"off_pitch_deg\":%.2f,\"off_roll_deg\":%.2f}",
+                               lc.status, lc.step, lc.pitch_cdeg / 100.0f, lc.roll_cdeg / 100.0f,
+                               lc.off_pitch_cdeg / 100.0f, lc.off_roll_cdeg / 100.0f);
+    }
+
     flora_weather_t w;
     if (hub_links_get(FLORA_MSG_WEATHER, &w, sizeof w, &seq_wx)) {
+        /* Temperatura powietrza z klatki Stevensona do korekty predkosci
+         * dzwieku w dalmierzach: 0,6 m/s na stopien, czyli przy 0 st C
+         * blad ~3,5% wzgledem domyslnych 20 st C. DS18B20 sie nie nadaje -
+         * mierzy pakiet baterii we wnetrzu bryly, nie powietrze. */
+        float t_air = w.temp_cc / 100.0f;
+        if (s_sonar_ok && t_air > -40.0f && t_air < 60.0f) {
+            flora_sonar_set_temperature(t_air);
+        }
         flora_mqtt_publish_fmt("head/weather", 0, false,
                                "{\"t_c\":%.2f,\"rh_pct\":%.2f,\"p_hpa\":%.2f}",
                                w.temp_cc / 100.0f, w.humidity_cpct / 100.0f,

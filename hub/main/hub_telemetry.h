@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <stdint.h>
 #include "esp_err.h"
 #include "flora_ina226.h"
 #include "flora_pwrsw.h"
@@ -27,3 +28,9 @@ esp_err_t hub_telemetry_start(flora_ina226_handle_t ina);
 
 /** Klucz zasilania masztu. NULL gdy niedostepny. */
 flora_pwrsw_handle_t hub_telemetry_mast(void);
+
+/** INA226 bryly. NULL gdy niedostepny. */
+flora_ina226_handle_t hub_telemetry_ina(void);
+
+/** Czas pracy ostatniej dawki pompki [ms]; 0 gdy jeszcze nie pracowala. */
+uint32_t hub_telemetry_pump_last_ms(void);

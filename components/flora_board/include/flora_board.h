@@ -165,6 +165,8 @@
 #define FLORA_NVS_GYRO_BIAS_X "gyro_bias_x"
 #define FLORA_NVS_GYRO_BIAS_Y "gyro_bias_y"
 #define FLORA_NVS_GYRO_BIAS_Z "gyro_bias_z"
+#define FLORA_NVS_PUMP_ML_S "pump_ml_s"       /**< wydajnosc pompki [ml/s], hub_sensorcal */
+#define FLORA_NVS_INA_SHUNT "ina_shunt"       /**< bocznik INA226 [mOhm] po kalibracji */
 
 /* ---- Regulator predkosci kol (hub_drive) ----
  * Klucze w FLORA_NVS_NS_CALIB, ustawiane przez cmd/config/<klucz>.

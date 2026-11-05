@@ -16,6 +16,8 @@
  *   drive_mode (pwm|pid), pid_kp, pid_ki, pid_kd, pid_kff, pid_ks,
  *   pid_acc, pid_vmax               - dzialaja od razu, patrz hub_drive.h
  *                                     ("-" wraca do domyslnej)
+ *   pump_ml_s                       - dziala od razu, patrz hub_sensorcal.h
+ *   ina_shunt (mOhm)                - dziala po restarcie
  *
  * Wartosc "-" dla kluczy tekstowych kasuje klucz (wraca wartosc
  * wkompilowana, czyli serwer i login robot1 z flora_board.h).
@@ -28,5 +30,6 @@
  */
 esp_err_t hub_config_set(const char *key, const char *value);
 
-/** Publikuje biezace ustawienia na "config" (retain, bez hasla). */
+/** Publikuje biezace ustawienia (retain, bez hasla): config (siec, gleba),
+ *  config_drive (naped, PID), config_cal (pompka, INA226). */
 void hub_config_publish(void);

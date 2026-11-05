@@ -87,6 +87,26 @@ static inline float head_heading_tilt_compensated(const float m[3],
     return head_wrap360(atan2f(my, mx) * HEAD_RAD2DEG);
 }
 
+/**
+ * @brief Pole magnetyczne w ukladzie poziomym (te same obroty co wyzej).
+ *
+ * Skladowe poziome daja kurs, a pionowa razem z pozioma - inklinacje,
+ * czyli kat pola wzgledem poziomu. Inklinacja jest w danym miejscu stala
+ * (w Krakowie ok. 66 st), wiec jej zmiana zdradza zaklocenie.
+ */
+static inline void head_mag_level(const float m[3], head_attitude_t at,
+                                  float *mx, float *my, float *mz)
+{
+    float p = at.pitch_deg * HEAD_DEG2RAD;
+    float r = at.roll_deg  * HEAD_DEG2RAD;
+    float sp = sinf(p), cp = cosf(p);
+    float sr = sinf(r), cr = cosf(r);
+
+    *mx =  m[0]*cp + m[1]*sr*sp + m[2]*cr*sp;
+    *my =  m[1]*cr - m[2]*sr;
+    *mz = -m[0]*sp + m[1]*sr*cp + m[2]*cr*cp;
+}
+
 /** Czy pole magnetyczne wyglada na ziemskie (okolo 25-65 uT na swiecie). */
 static inline bool head_mag_plausible(const float m[3])
 {

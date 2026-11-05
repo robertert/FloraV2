@@ -25,6 +25,7 @@
 #include "hub_links.h"
 #include "hub_ota.h"
 #include "hub_remote.h"
+#include "hub_sensorcal.h"
 #include "hub_telemetry.h"
 #include "flora_board.h"
 #include "flora_ina226.h"
@@ -52,7 +53,7 @@ static void ina226_setup(void)
     }
 
     flora_ina226_cfg_t cfg = FLORA_INA226_DEFAULT_CFG();
-    cfg.shunt_milliohm = FLORA_SHUNT_MILLIOHM;
+    cfg.shunt_milliohm = hub_sensorcal_ina_shunt_boot();   /* z kalibracji albo 10 mOhm */
     for (uint8_t addr = 0x40; addr <= 0x4F; addr++) {
         if (i2c_master_probe(s_i2c_bus, addr, 50) != ESP_OK) {
             continue;

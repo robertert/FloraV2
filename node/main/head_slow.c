@@ -208,7 +208,7 @@ static void do_sun(void)
     head_sun_t sun = head_sun_azimuth(lux, SUN_MIN_LUX, SUN_MIN_CONTRAST);
 
     flora_sun_t m = {
-        .timestamp_us   = (uint32_t)esp_timer_get_time(),
+        .timestamp_us   = head_cmd_stamp(esp_timer_get_time()),
         .azimuth_cdeg   = (uint16_t)lroundf(sun.azimuth_deg * 100.0f),
         .elevation_cdeg = 0,     /* wysokosci nie szacujemy - krzyz patrzy w boki */
         .valid          = sun.valid ? 1 : 0,
@@ -237,7 +237,7 @@ static void do_weather(void)
     }
 
     flora_weather_t m = {
-        .timestamp_us  = (uint32_t)esp_timer_get_time(),
+        .timestamp_us  = head_cmd_stamp(esp_timer_get_time()),
         .pressure_pa   = (uint32_t)lroundf(d.pressure_pa),
         .temp_cc       = (int16_t)lroundf(d.temperature_c * 100.0f),
         .humidity_cpct = isnan(d.humidity_pct) ? 0

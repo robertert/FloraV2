@@ -22,6 +22,8 @@
 
 #include "hub_config.h"
 #include "hub_drive.h"
+#include "hub_sensorcal.h"
+#include "hub_headcal.h"
 #include "hub_nav.h"
 #include "hub_ota.h"
 #include "hub_remote.h"
@@ -122,6 +124,14 @@ static esp_err_t cmd_pump(const char *arg)
         return flora_pump_run_ms(HUB_PUMP_MAX_RUN_MS);
     }
     char *end;
+    if (strncmp(arg, "ml ", 3) == 0) {
+        /* Dawka objetosciowa - wymaga kalibracji cmd/pump_cal. */
+        float ml = strtof(arg + 3, &end);
+        if (end == arg + 3 || *end || ml <= 0.0f) {
+            return ESP_ERR_INVALID_ARG;
+        }
+        return flora_pump_dose_ml(ml);
+    }
     unsigned long ms = strtoul(arg, &end, 10);
     if (end == arg || *end || ms == 0 || ms > HUB_PUMP_MAX_RUN_MS) {
         return ESP_ERR_INVALID_ARG;
@@ -233,6 +243,13 @@ static void on_cmd(const char *topic, size_t topic_len,
     else if (strcmp(cmd, "mast") == 0)        { err = cmd_mast(arg); }
     else if (strcmp(cmd, "pid_step") == 0)    { err = cmd_pid_step(arg); }
     else if (strcmp(cmd, "pose_reset") == 0)  { err = cmd_pose_reset(arg); }
+    else if (strcmp(cmd, "mag_cal") == 0)     { err = hub_ota_in_progress() ? ESP_ERR_INVALID_STATE
+                                                                            : hub_headcal_mag(arg); }
+    else if (strcmp(cmd, "head_gyro_cal") == 0) { err = hub_headcal_gyro(); }
+    else if (strcmp(cmd, "pump_cal") == 0)    { err = hub_sensorcal_pump(arg); }
+    else if (strcmp(cmd, "ina_cal") == 0)     { err = hub_sensorcal_ina(arg); }
+    else if (strcmp(cmd, "level_cal") == 0)   { err = hub_ota_in_progress() ? ESP_ERR_INVALID_STATE
+                                                                            : hub_headcal_level(arg); }
     else if (strcmp(cmd, "stall_clear") == 0) { err = flora_motors_clear_stall(); }
     else if (strcmp(cmd, "reboot") == 0)      { err = cmd_reboot(); }
     else if (strcmp(cmd, "ota") == 0)         { err = hub_ota_start(arg); }

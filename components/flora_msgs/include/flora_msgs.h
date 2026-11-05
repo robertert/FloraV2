@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 /** Wersja kontraktu. Podbij przy zmianie ukladu ktorejkolwiek struktury. */
-#define FLORA_MSGS_VERSION 3
+#define FLORA_MSGS_VERSION 4
 
 /** Typy wiadomosci. Wartosci jawne, bo ida po kablu. */
 typedef enum {
@@ -47,6 +47,9 @@ typedef enum {
     FLORA_MSG_WEATHER     = 0x13,  /**< flora_weather_t, 0,1 Hz */
     FLORA_MSG_HEAD_STATUS = 0x14,  /**< flora_head_status_t, 0,2 Hz */
     FLORA_MSG_OBSTACLES   = 0x15,  /**< flora_obstacles_t, kamera przednia glowicy */
+    FLORA_MSG_MAG_INFO    = 0x16,  /**< flora_mag_info_t, 1 Hz, diagnostyka magnetometru */
+    FLORA_MSG_MAG_CAL_RESULT = 0x17, /**< flora_mag_cal_result_t, po kalibracji */
+    FLORA_MSG_LEVEL_CAL_RESULT = 0x18, /**< flora_level_cal_result_t, po kalibracji poziomu */
 
     /* --- modul kamery znacznikow -> bryla (przez glowice) ---
      * Typy sa globalnie unikalne w calym systemie, wiec glowica przekazuje
@@ -75,6 +78,8 @@ typedef enum {
 #define FLORA_ATT_MAG_VALID      (1u << 1)
 #define FLORA_ATT_SUN_FUSED      (1u << 2)  /**< kurs wsparty kompasem slonecznym */
 #define FLORA_ATT_TILTED         (1u << 3)  /**< przechyl zbyt duzy, kurs mniej pewny */
+#define FLORA_ATT_MAG_DISTURBED  (1u << 4)  /**< pole zaklocone - magnetometr pominiety */
+#define FLORA_ATT_TIME_SYNCED    (1u << 5)  /**< timestamp_us w zegarze BRYLY (po TIME_SYNC) */
 
 /* ================= WSPOLNE ================= */
 
@@ -100,6 +105,10 @@ typedef struct __attribute__((packed)) {
  * a opoznienie transmisji i szeregowania wnosi jitter, ktory inaczej
  * wszedlby wprost w krok predykcji.
  *
+ * Po odebraniu TIME_SYNC glowica przelicza znaczniki na ZEGAR BRYLY
+ * i ustawia FLORA_ATT_TIME_SYNCED - bryla liczy wtedy wiek probki wprost.
+ * Bez flagi znacznik jest w zegarze glowicy (jak w wersji 3).
+ *
  * Odejmowanie znacznikow dziala poprawnie przez zawiniecie licznika, bo
  * arytmetyka na uint32 jest modulo - ale pamietaj, ze zawija co ~71 minut.
  */
@@ -109,8 +118,9 @@ typedef struct __attribute__((packed)) {
     int16_t  rate_z_cdps;    /**< predkosc katowa wokol pionu, centy-dps (+-327 dps) */
     int16_t  pitch_cdeg;     /**< pochylenie, centystopnie */
     int16_t  roll_cdeg;      /**< przechyl, centystopnie */
-    uint8_t  quality;        /**< 0..100, pewnosc kursu */
+    uint8_t  quality;        /**< 0..100, pewnosc kursu (zgodnosc wstecz; liczone z sigma) */
     uint8_t  flags;          /**< FLORA_ATT_* */
+    uint16_t heading_sigma_cdeg; /**< niepewnosc kursu z filtra Kalmana glowicy, centystopnie */
 } flora_attitude_t;
 
 /**
@@ -176,6 +186,54 @@ typedef struct __attribute__((packed)) {
     uint8_t  _pad;
 } flora_obstacles_t;
 
+/** Bity flags w flora_mag_info_t. */
+#define FLORA_MAG_CAL_OK      (1u << 0)  /**< jest kalibracja hard/soft iron z NVS */
+#define FLORA_MAG_DISTURBED   (1u << 1)
+#define FLORA_MAG_COLLECTING  (1u << 2)  /**< trwa zbieranie probek kalibracji */
+
+/**
+ * Diagnostyka magnetometru, 1 Hz. Do testu D-009 (silniki on/off) i do
+ * podgladu zaklocen - EKF z tego nie korzysta.
+ */
+typedef struct __attribute__((packed)) {
+    uint32_t timestamp_us;
+    uint16_t field_h_cut;      /**< pole poziome po korekcji, setne uT */
+    int16_t  dip_cdeg;         /**< inklinacja, centystopnie */
+    uint16_t field_total_cut;  /**< wartosc calkowita, setne uT */
+    int16_t  gyro_bias_mdps;   /**< dryf zyro z Kalmana, tysieczne st/s */
+    uint16_t heading_sigma_cdeg;
+    uint8_t  flags;            /**< FLORA_MAG_* */
+    uint8_t  cause;            /**< przyczyna zaklocenia, FLORA_MAGDIST_CAUSE_* */
+} flora_mag_info_t;
+
+/** Wynik kalibracji magnetometru (status jak flora_magcal_status_t, 0 = OK). */
+typedef struct __attribute__((packed)) {
+    uint8_t  status;
+    uint8_t  sectors;          /**< pokryte sektory po 30 st, z 12 */
+    uint16_t samples;
+    int16_t  offset_x_cut;     /**< hard iron, setne uT */
+    int16_t  offset_y_cut;
+    uint16_t axis_ratio_milli; /**< splaszczenie elipsy x1000 */
+    uint16_t rms_cpct;         /**< rozrzut po korekcji, setne procenta */
+    uint16_t field_h_cut;      /**< pole poziome odniesienia, setne uT */
+    int16_t  dip_cdeg;         /**< inklinacja odniesienia */
+} flora_mag_cal_result_t;
+
+/** Wynik kroku kalibracji poziomu akcelerometru. */
+#define FLORA_LEVEL_CAL_OK        0  /**< offset policzony i zapisany */
+#define FLORA_LEVEL_CAL_MOVED     1  /**< ruch w trakcie pomiaru - powtorz */
+#define FLORA_LEVEL_CAL_NO_FIRST  2  /**< krok 2 bez kroku 1 */
+#define FLORA_LEVEL_CAL_FIRST_OK  3  /**< krok 1 zmierzony, obroc o 180 st i wykonaj krok 2 */
+
+typedef struct __attribute__((packed)) {
+    uint8_t  status;           /**< FLORA_LEVEL_CAL_* */
+    uint8_t  step;             /**< 0 plasko, 1 pierwsza pozycja, 2 druga */
+    int16_t  pitch_cdeg;       /**< zmierzone w tym kroku, bez offsetu */
+    int16_t  roll_cdeg;
+    int16_t  off_pitch_cdeg;   /**< offset obowiazujacy po tym kroku */
+    int16_t  off_roll_cdeg;
+} flora_level_cal_result_t;
+
 /* ================= MODUL ZNACZNIKOW -> BRYLA ================= */
 
 /** Ile znacznikow miesci sie w jednej ramce. */
@@ -220,6 +278,14 @@ typedef enum {
     FLORA_CMD_SET_ATT_HZ     = 0x02,  /**< arg = docelowe Hz dla ATTITUDE */
     FLORA_CMD_CALIBRATE_GYRO = 0x03,  /**< glowica musi byc nieruchoma */
     FLORA_CMD_SET_SUN_GAIN   = 0x04,  /**< arg = indeks czulosci VEML */
+    /** arg = czas zbierania w s (10-120). Robot/glowica musi sie w tym czasie
+     *  obrocic 2-3 razy wokol pionu. Wynik: FLORA_MSG_MAG_CAL_RESULT. */
+    FLORA_CMD_CALIBRATE_MAG  = 0x05,
+    /** Poziom akcelerometru (robot nieruchomo, 2 s). arg: 0 = podloze plaskie,
+     *  jeden pomiar; 1 = pierwsza pozycja; 2 = druga, po obrocie o 180 st -
+     *  srednia z dwoch oddziela przekrzywienie plytki od pochylosci podloza.
+     *  Wynik: FLORA_MSG_LEVEL_CAL_RESULT. */
+    FLORA_CMD_CALIBRATE_LEVEL = 0x06,
 } flora_cmd_code_t;
 
 typedef struct __attribute__((packed)) {
@@ -239,7 +305,7 @@ typedef struct __attribute__((packed)) {
  */
 _Static_assert(sizeof(flora_pong_t)        ==  4, "flora_pong_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_hello_t)       ==  8, "flora_hello_t: podbij FLORA_MSGS_VERSION");
-_Static_assert(sizeof(flora_attitude_t)    == 14, "flora_attitude_t: podbij FLORA_MSGS_VERSION");
+_Static_assert(sizeof(flora_attitude_t)    == 16, "flora_attitude_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_sun_t)         == 18, "flora_sun_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_weather_t)     == 16, "flora_weather_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_head_status_t) ==  8, "flora_head_status_t: podbij FLORA_MSGS_VERSION");
@@ -249,6 +315,9 @@ _Static_assert(sizeof(flora_obstacles_t)   == 24, "flora_obstacles_t: podbij FLO
 _Static_assert(sizeof(flora_tag_t)         ==  8, "flora_tag_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_tags_t)        == 40, "flora_tags_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_cam_status_t)  == 12, "flora_cam_status_t: podbij FLORA_MSGS_VERSION");
+_Static_assert(sizeof(flora_mag_info_t)    == 16, "flora_mag_info_t: podbij FLORA_MSGS_VERSION");
+_Static_assert(sizeof(flora_mag_cal_result_t) == 16, "flora_mag_cal_result_t: podbij FLORA_MSGS_VERSION");
+_Static_assert(sizeof(flora_level_cal_result_t) == 10, "flora_level_cal_result_t: podbij FLORA_MSGS_VERSION");
 
 /**
  * @brief Oczekiwany rozmiar payloadu dla typu wiadomosci.
@@ -275,6 +344,9 @@ static inline int flora_msgs_payload_size(uint8_t type)
         case FLORA_MSG_OBSTACLES:   return (int)sizeof(flora_obstacles_t);
         case FLORA_MSG_TAGS:        return (int)sizeof(flora_tags_t);
         case FLORA_MSG_CAM_STATUS:  return (int)sizeof(flora_cam_status_t);
+        case FLORA_MSG_MAG_INFO:    return (int)sizeof(flora_mag_info_t);
+        case FLORA_MSG_MAG_CAL_RESULT: return (int)sizeof(flora_mag_cal_result_t);
+        case FLORA_MSG_LEVEL_CAL_RESULT: return (int)sizeof(flora_level_cal_result_t);
         default:                    return -1;
     }
 }

@@ -18,6 +18,11 @@ static volatile uint8_t  s_att_hz;
 static volatile bool     s_req_sun_gain;
 static volatile uint8_t  s_sun_gain;
 static volatile int64_t  s_clock_offset_us;
+static volatile bool     s_time_synced;
+static volatile bool     s_req_mag_cal;
+static volatile uint32_t s_mag_cal_s;
+static volatile bool     s_req_level;
+static volatile uint8_t  s_level_step;
 
 static void on_cmd(uint8_t type, const void *payload, uint8_t len, void *ctx)
 {
@@ -52,6 +57,24 @@ static void on_cmd(uint8_t type, const void *payload, uint8_t len, void *ctx)
             }
             break;
 
+        case FLORA_CMD_CALIBRATE_MAG:
+            if (c->arg >= 10 && c->arg <= 120) {
+                s_mag_cal_s   = c->arg;
+                s_req_mag_cal = true;
+                ESP_LOGI(TAG, "zadanie kalibracji magnetometru: %" PRIu32 " s", c->arg);
+            } else {
+                ESP_LOGW(TAG, "kalibracja magnetometru: %" PRIu32 " s poza zakresem 10-120", c->arg);
+            }
+            break;
+
+        case FLORA_CMD_CALIBRATE_LEVEL:
+            if (c->arg <= 2) {
+                s_level_step = (uint8_t)c->arg;
+                s_req_level  = true;
+                ESP_LOGI(TAG, "zadanie kalibracji poziomu, krok %" PRIu32, c->arg);
+            }
+            break;
+
         case FLORA_CMD_SET_SUN_GAIN:
             s_sun_gain     = (uint8_t)c->arg;
             s_req_sun_gain = true;
@@ -72,9 +95,14 @@ static void on_time_sync(uint8_t type, const void *payload, uint8_t len, void *c
     /* Roznica zegarow, zeby znaczniki czasu w ATTITUDE dalo sie przelozyc
      * na os czasu bryly. Nie korygujemy wlasnego zegara - monotonicznosc
      * jest wazniejsza dla calkowania zyroskopu niz zgodnosc bezwzgledna. */
-    s_clock_offset_us = (int64_t)t->bottom_us - esp_timer_get_time();
-    ESP_LOGI(TAG, "synchronizacja zegara, przesuniecie %" PRId64 " us",
-             s_clock_offset_us);
+    int64_t off = (int64_t)t->bottom_us - esp_timer_get_time();
+    /* Zegar bryly jest 64-bitowy, a po kablu idzie mlodsze 32 bity - wiec
+     * przesuniecie ma sens tylko modulo 2^32. Tak tez uzywamy go nizej. */
+    if (!s_time_synced) {
+        ESP_LOGI(TAG, "synchronizacja zegara, przesuniecie %" PRId64 " us", off);
+    }
+    s_clock_offset_us = off;
+    s_time_synced     = true;
 }
 
 void head_cmd_register(flora_link_handle_t down)
@@ -113,3 +141,30 @@ bool head_cmd_take_sun_gain(uint8_t *gain_index)
 }
 
 int64_t head_cmd_clock_offset_us(void) { return s_clock_offset_us; }
+
+bool head_cmd_time_synced(void) { return s_time_synced; }
+
+uint32_t head_cmd_stamp(int64_t local_us)
+{
+    return s_time_synced ? (uint32_t)(local_us + s_clock_offset_us) : (uint32_t)local_us;
+}
+
+bool head_cmd_take_level_cal(uint8_t *step)
+{
+    if (!s_req_level) {
+        return false;
+    }
+    *step = s_level_step;
+    s_req_level = false;
+    return true;
+}
+
+bool head_cmd_take_mag_cal(uint32_t *seconds)
+{
+    if (!s_req_mag_cal) {
+        return false;
+    }
+    *seconds = s_mag_cal_s;
+    s_req_mag_cal = false;
+    return true;
+}
