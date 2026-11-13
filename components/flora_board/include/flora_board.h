@@ -168,6 +168,20 @@
 #define FLORA_NVS_PUMP_ML_S "pump_ml_s"       /**< wydajnosc pompki [ml/s], hub_sensorcal */
 #define FLORA_NVS_INA_SHUNT "ina_shunt"       /**< bocznik INA226 [mOhm] po kalibracji */
 
+/* ---- Parametry nawigacji (hub_params) ----
+ * W FLORA_NVS_NS_CALIB, ustawiane przez cmd/config/<klucz> albo przez
+ * kalibracje cmd/track_cal i cmd/wheel_cal. Brak klucza = stala
+ * wkompilowana wyzej (FLORA_TRACK_MM itd.). Mapa palikow to blob. */
+#define FLORA_NVS_TRACK_MM    "track_mm"     /**< efektywny rozstaw kol [mm] */
+#define FLORA_NVS_WHEEL_MM    "wheel_mm"     /**< srednia skuteczna srednica kol [mm] */
+#define FLORA_NVS_WHEEL_RATIO "wheel_ratio"  /**< srednica prawego / lewego */
+#define FLORA_NVS_CAM_X_MM    "cam_x_mm"
+#define FLORA_NVS_CAM_Y_MM    "cam_y_mm"
+#define FLORA_NVS_SITE_LAT    "site_lat"
+#define FLORA_NVS_SITE_LON    "site_lon"
+#define FLORA_NVS_MAG_DECL    "mag_decl"
+#define FLORA_NVS_TAG_MAP     "tag_map"
+
 /* ---- Regulator predkosci kol (hub_drive) ----
  * Klucze w FLORA_NVS_NS_CALIB, ustawiane przez cmd/config/<klucz>.
  * Domyslne celowo "puste": strojenie zaczyna sie od zera, kolejnosc

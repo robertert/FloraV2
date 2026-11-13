@@ -92,5 +92,27 @@ bool hub_nav_get(int variant, hub_nav_pose_t *out);
 
 void hub_nav_status(hub_nav_status_t *out);
 
-/** Ustawia pozycje i kat WSZYSTKICH wariantow; b zostaje. */
+/** Ustawia pozycje i kat WSZYSTKICH wariantow; b liczone od nowa. */
 esp_err_t hub_nav_reset_pose(float x_mm, float y_mm, float th_deg);
+
+/** Parametry z hub_params sie zmienily (rozstaw, kola, kamera, miejsce). */
+void hub_nav_params_changed(void);
+
+/* ---- mapa palikow (NVS) ---- */
+
+#define HUB_NAV_MAX_TAGS 16
+
+/**
+ * cmd/tag:
+ *   "<id> <x_mm> <y_mm>"  dodaje albo przesuwa palik (uklad mapy)
+ *   "<id> -"              usuwa
+ *   "clear"               usuwa wszystkie
+ * Kazdy palik publikowany (retain) na config_tags/<id>, usuniety - pusty retain.
+ * @return ESP_ERR_NO_MEM gdy mapa pelna, ESP_ERR_NOT_FOUND przy usuwaniu nieznanego
+ */
+esp_err_t hub_nav_tag_cmd(const char *arg);
+
+int  hub_nav_tag_count(void);
+
+/** Publikuje cala mape (po polaczeniu z brokerem). */
+void hub_nav_tags_publish(void);

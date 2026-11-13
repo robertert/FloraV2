@@ -36,6 +36,7 @@
 #include "hub_diag.h"
 #include "hub_drive.h"
 #include "hub_nav.h"
+#include "hub_params.h"
 #include "hub_sensorcal.h"
 #include "hub_links.h"
 #include "flora_board.h"
@@ -129,7 +130,13 @@ static void drive_init(void)
     ecfg.right = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_L_A,
                                         .b_gpio = FLORA_PIN_ENC_L_B,
                                         .invert = true };
-    ecfg.mm_per_count = FLORA_MM_PER_COUNT;
+    /* Srednice kol z NVS (cmd/wheel_cal), osobno dla kazdego kola. */
+    hub_params_load();
+    hub_params_t hp;
+    hub_params_get(&hp);
+    float mm_l, mm_r;
+    hub_params_mm_per_count(&hp, &mm_l, &mm_r);
+    ecfg.mm_per_count = mm_l;
     if (flora_encoders_init(&ecfg) != ESP_OK) {
         /* Bez enkoderow straznik widzialby wieczny utyk - naped zostaje
          * wylaczony, zamiast jezdzic bez zabezpieczenia. */
@@ -137,6 +144,8 @@ static void drive_init(void)
         flora_motors_deinit();
         return;
     }
+
+    flora_encoders_set_mm_per_count(mm_l, mm_r);
 
     flora_motors_stall_cfg_t guard = FLORA_MOTORS_STALL_DEFAULT_CFG();
     guard.counts_cb  = encoder_counts;

@@ -8,6 +8,8 @@
  * a potem podawane kazdemu wariantowi, ktory ma dane zrodlo wlaczone.
  */
 #include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #include <string.h>
 #include <time.h>
@@ -22,11 +24,14 @@
 
 #include "hub_links.h"
 #include "hub_nav.h"
+#include "hub_params.h"
 #include "flora_board.h"
 #include "flora_ekf.h"
 #include "flora_encoders.h"
 #include "flora_msgs.h"
 #include "flora_sungate.h"
+#include "flora_mqtt.h"
+#include "flora_store.h"
 
 static const char *TAG = "nav";
 
@@ -55,25 +60,23 @@ static const char *TAG = "nav";
 #define R2D(r) ((r) * 180.0f / (float)M_PI)
 
 /* ---- mapa palikow ----
- * Polozenia znacznikow w ukladzie mapy [mm]. Na razie pusta: obszar
- * roboczy i rozmieszczenie palikow nie sa jeszcze ustalone.
- * TODO: przeniesc do NVS i cmd/config, gdy bedzie znany obszar. */
+ * Polozenia znacznikow w ukladzie mapy [mm], w NVS (blob FLORA_NVS_TAG_MAP),
+ * zmieniane przez cmd/tag (hub_nav_tag_cmd). Czytane z nav_task pod s_n.lock. */
 typedef struct {
     uint16_t id;
+    uint16_t _pad;
     float    x_mm, y_mm;
 } tag_pos_t;
 
-#define TAG_UNUSED 0xFFFF
-static const tag_pos_t s_tag_map[] = {
-    /* { .id = 0, .x_mm = 0.0f,    .y_mm = 0.0f    }, */
-    { .id = TAG_UNUSED },
-};
+static tag_pos_t s_tags[HUB_NAV_MAX_TAGS];
+static int       s_tag_n;
 
+/** Zaklada trzymana blokade (albo start, zanim ruszy zadanie). */
 static const tag_pos_t *tag_lookup(uint16_t id)
 {
-    for (size_t i = 0; i < sizeof s_tag_map / sizeof s_tag_map[0]; i++) {
-        if (s_tag_map[i].id != TAG_UNUSED && s_tag_map[i].id == id) {
-            return &s_tag_map[i];
+    for (int i = 0; i < s_tag_n; i++) {
+        if (s_tags[i].id == id) {
+            return &s_tags[i];
         }
     }
     return NULL;
@@ -126,6 +129,11 @@ static struct {
     bool     have_att;
     float    gyro_vs_odo_dps;   /**< wygladzona roznica obrotu kola - zyro */
     bool     gyro_ok;
+
+    /* kopia hub_params, odswiezana przez hub_nav_params_changed() */
+    float    mm_l, mm_r;        /**< droga na zliczenie */
+    float    track_mm;
+    float    cam_x_mm, cam_y_mm;
 } s_n = { .sun_gate = FLORA_SUNGATE_NONE, .att_age_ms = -1 };
 
 /** Pomiar kursu przygotowany dla wariantow w biezacym takcie. */
@@ -267,7 +275,7 @@ static void apply_tags(variant_t *v, const flora_tags_t *msg)
         /* flora_tags: kat dodatni W PRAWO; EKF: CCW, czyli w lewo. */
         float beta = -D2R(t->bearing_cdeg / 100.0f);
         if (flora_ekf_update_tag(&v->ekf, pos->x_mm, pos->y_mm,
-                                 FLORA_NAV_CAM_X_MM, FLORA_NAV_CAM_Y_MM,
+                                 s_n.cam_x_mm, s_n.cam_y_mm,
                                  d, beta, (20.0f + 0.02f * d) * k, D2R(1.5f) * k)) {
             v->n_tag++;
         }
@@ -296,6 +304,165 @@ static void send_still(bool still, int64_t now_us)
     sent_once  = true;
 }
 
+/** Kopia parametrow do zmiennych petli. Zaklada blokade albo start. */
+static void apply_params(const hub_params_t *p)
+{
+    hub_params_mm_per_count(p, &s_n.mm_l, &s_n.mm_r);
+    s_n.track_mm = p->track_mm;
+    s_n.cam_x_mm = p->cam_x_mm;
+    s_n.cam_y_mm = p->cam_y_mm;
+    for (int i = 0; i < VARIANTS; i++) {
+        s_variants[i].ekf.cfg.track_mm = p->track_mm;
+    }
+    s_n.gate.cfg.lat_deg         = p->lat_deg;
+    s_n.gate.cfg.lon_deg         = p->lon_deg;
+    s_n.gate.cfg.declination_deg = p->decl_deg;
+}
+
+void hub_nav_params_changed(void)
+{
+    if (!s_n.ready) {
+        return;   /* start i tak wczyta biezace */
+    }
+    hub_params_t p;
+    hub_params_get(&p);
+    xSemaphoreTake(s_n.lock, portMAX_DELAY);
+    apply_params(&p);
+    flora_sungate_reset(&s_n.gate);   /* stare pomiary liczone przy innym miejscu */
+    xSemaphoreGive(s_n.lock);
+}
+
+/* ---- mapa palikow: NVS i cmd/tag ---- */
+
+static void tags_load(void)
+{
+    s_tag_n = 0;
+    flora_store_t h;
+    if (flora_store_open(FLORA_NVS_NS_CALIB, &h) != ESP_OK) {
+        return;
+    }
+    size_t len = sizeof s_tags;
+    if (flora_store_get_blob(h, FLORA_NVS_TAG_MAP, s_tags, &len) == ESP_OK &&
+        len % sizeof(tag_pos_t) == 0) {
+        s_tag_n = (int)(len / sizeof(tag_pos_t));
+    }
+    flora_store_close(h);
+}
+
+/** Zaklada blokade. */
+static esp_err_t tags_save(void)
+{
+    flora_store_t h;
+    esp_err_t err = flora_store_open(FLORA_NVS_NS_CALIB, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = s_tag_n ? flora_store_set_blob(h, FLORA_NVS_TAG_MAP, s_tags, s_tag_n * sizeof(tag_pos_t))
+                  : flora_store_erase_key(h, FLORA_NVS_TAG_MAP);
+    flora_store_close(h);
+    return err;
+}
+
+static void tag_publish_one(const tag_pos_t *t, uint16_t id)
+{
+    char topic[24];
+    snprintf(topic, sizeof topic, "config_tags/%u", id);
+    if (t) {
+        flora_mqtt_publish_fmt(topic, 1, true, "{\"x_mm\":%.0f,\"y_mm\":%.0f}", t->x_mm, t->y_mm);
+    } else {
+        flora_mqtt_publish(topic, "", 0, 1, true);   /* pusty retain kasuje */
+    }
+}
+
+void hub_nav_tags_publish(void)
+{
+    if (!s_n.ready) {
+        return;
+    }
+    tag_pos_t copy[HUB_NAV_MAX_TAGS];
+    xSemaphoreTake(s_n.lock, portMAX_DELAY);
+    int n = s_tag_n;
+    memcpy(copy, s_tags, sizeof copy);
+    xSemaphoreGive(s_n.lock);
+    for (int i = 0; i < n; i++) {
+        tag_publish_one(&copy[i], copy[i].id);
+    }
+}
+
+int hub_nav_tag_count(void)
+{
+    return s_tag_n;
+}
+
+esp_err_t hub_nav_tag_cmd(const char *arg)
+{
+    ESP_RETURN_ON_FALSE(s_n.ready, ESP_ERR_INVALID_STATE, TAG, "filtr nie dziala");
+
+    if (strcmp(arg, "clear") == 0) {
+        xSemaphoreTake(s_n.lock, portMAX_DELAY);
+        tag_pos_t old[HUB_NAV_MAX_TAGS];
+        int n = s_tag_n;
+        memcpy(old, s_tags, sizeof old);
+        s_tag_n = 0;
+        esp_err_t err = tags_save();
+        xSemaphoreGive(s_n.lock);
+        for (int i = 0; i < n; i++) tag_publish_one(NULL, old[i].id);
+        hub_params_publish();
+        return err;
+    }
+
+    char *end;
+    unsigned long id = strtoul(arg, &end, 10);
+    if (end == arg || *end != ' ' || id > 586) {   /* tag36h11 ma 587 kodow */
+        return ESP_ERR_INVALID_ARG;
+    }
+    const char *p = end + 1;
+    bool del = strcmp(p, "-") == 0;
+    float x = 0.0f, y = 0.0f;
+    if (!del) {
+        x = strtof(p, &end);
+        if (end == p || *end != ' ' || !isfinite(x) || fabsf(x) > 1e6f) return ESP_ERR_INVALID_ARG;
+        p = end + 1;
+        y = strtof(p, &end);
+        if (end == p || *end || !isfinite(y) || fabsf(y) > 1e6f) return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = ESP_OK;
+    tag_pos_t saved = { 0 };
+    xSemaphoreTake(s_n.lock, portMAX_DELAY);
+    tag_pos_t *t = (tag_pos_t *)tag_lookup((uint16_t)id);
+    if (del) {
+        if (!t) {
+            err = ESP_ERR_NOT_FOUND;
+        } else {
+            *t = s_tags[--s_tag_n];   /* ostatni na miejsce usunietego */
+        }
+    } else if (!t && s_tag_n >= HUB_NAV_MAX_TAGS) {
+        err = ESP_ERR_NO_MEM;
+    } else {
+        if (!t) {
+            t = &s_tags[s_tag_n++];
+        }
+        *t = (tag_pos_t){ .id = (uint16_t)id, .x_mm = x, .y_mm = y };
+        saved = *t;
+    }
+    if (err == ESP_OK) {
+        err = tags_save();
+    }
+    xSemaphoreGive(s_n.lock);
+
+    if (err == ESP_OK) {
+        if (del) {
+            ESP_LOGI(TAG, "palik %lu usuniety", id);
+        } else {
+            ESP_LOGI(TAG, "palik %lu w (%.0f, %.0f) mm", id, x, y);
+        }
+        tag_publish_one(del ? NULL : &saved, (uint16_t)id);
+        hub_params_publish();   /* liczba palikow w config_nav */
+    }
+    return err;
+}
+
 static void nav_task(void *arg)
 {
     TickType_t wake = xTaskGetTickCount();
@@ -320,8 +487,8 @@ static void nav_task(void *arg)
         }
         /* Przyrosty z calkowitych zliczen, nie z narastajacych mm w float:
          * po kilku km float gubi milimetry, a przyrost na takt to ~2 mm. */
-        float dl = (float)(now.left_counts  - prev.left_counts)  * FLORA_MM_PER_COUNT;
-        float dr = (float)(now.right_counts - prev.right_counts) * FLORA_MM_PER_COUNT;
+        float dl = (float)(now.left_counts  - prev.left_counts)  * s_n.mm_l;
+        float dr = (float)(now.right_counts - prev.right_counts) * s_n.mm_r;
         float dt = (float)(now.timestamp_us - prev.timestamp_us) / 1e6f;
         prev = now;
         if (fabsf(dl) > MAX_STEP_MM || fabsf(dr) > MAX_STEP_MM) {
@@ -352,7 +519,7 @@ static void nav_task(void *arg)
                       now.timestamp_us - s_n.att_rx_us < GYRO_MAX_AGE_US;
         float dth_gyro = s_n.gyro_ok ? -D2R(s_n.att.rate_z_cdps / 100.0f) * dt : 0.0f;
         if (s_n.gyro_ok && dt > 0.0f) {
-            float dth_odo = (dr - dl) / FLORA_TRACK_MM;
+            float dth_odo = (dr - dl) / s_n.track_mm;
             float mis_dps = R2D(dth_odo - dth_gyro) / dt;
             s_n.gyro_vs_odo_dps += 0.05f * (mis_dps - s_n.gyro_vs_odo_dps);   /* ~0,4 s */
         }
@@ -398,18 +565,20 @@ esp_err_t hub_nav_start(void)
     s_n.lock = xSemaphoreCreateMutex();
     ESP_RETURN_ON_FALSE(s_n.lock, ESP_ERR_NO_MEM, TAG, "brak pamieci na mutex");
 
+    hub_params_t p;
+    hub_params_get(&p);
+
     flora_ekf_cfg_t cfg = FLORA_EKF_DEFAULT_CFG();
-    cfg.track_mm = FLORA_TRACK_MM;
+    cfg.track_mm = p.track_mm;
     cfg.k_l = cfg.k_r = FLORA_NAV_K_WHEEL;
     for (int i = 0; i < VARIANTS; i++) {
         flora_ekf_init(&s_variants[i].ekf, &cfg);
     }
 
     flora_sungate_cfg_t gcfg = FLORA_SUNGATE_DEFAULT_CFG();
-    gcfg.lat_deg         = FLORA_SITE_LAT_DEG;
-    gcfg.lon_deg         = FLORA_SITE_LON_DEG;
-    gcfg.declination_deg = FLORA_MAG_DECLINATION_DEG;
     flora_sungate_init(&s_n.gate, &gcfg);
+    apply_params(&p);
+    tags_load();
 
     /* Czas UTC tylko dla kompasu slonecznego. Bez sieci SNTP ponawia
      * w tle, a slonce jest po prostu pomijane (bramka 2). */
@@ -421,8 +590,9 @@ esp_err_t hub_nav_start(void)
     BaseType_t ok = xTaskCreate(nav_task, "nav", 4096, NULL, 5, NULL);
     ESP_RETURN_ON_FALSE(ok == pdPASS, ESP_ERR_NO_MEM, TAG, "zadanie nav");
     s_n.ready = true;
-    ESP_LOGI(TAG, "EKF pozycji: %d wariantow, rozstaw %.0f mm, k kola %.2f mm^2/mm, kamera (%.0f, %.0f) mm",
-             VARIANTS, cfg.track_mm, cfg.k_l, FLORA_NAV_CAM_X_MM, FLORA_NAV_CAM_Y_MM);
+    ESP_LOGI(TAG, "EKF pozycji: %d wariantow, rozstaw %.1f mm, k kola %.2f mm^2/mm, "
+                  "kamera (%.0f, %.0f) mm, palikow %d",
+             VARIANTS, cfg.track_mm, cfg.k_l, p.cam_x_mm, p.cam_y_mm, s_tag_n);
     return ESP_OK;
 }
 

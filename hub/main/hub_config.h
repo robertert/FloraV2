@@ -18,6 +18,8 @@
  *                                     ("-" wraca do domyslnej)
  *   pump_ml_s                       - dziala od razu, patrz hub_sensorcal.h
  *   ina_shunt (mOhm)                - dziala po restarcie
+ *   track_mm, wheel_mm, wheel_ratio, cam_x_mm, cam_y_mm,
+ *   site_lat, site_lon, mag_decl    - dzialaja od razu, patrz hub_params.h
  *
  * Wartosc "-" dla kluczy tekstowych kasuje klucz (wraca wartosc
  * wkompilowana, czyli serwer i login robot1 z flora_board.h).
@@ -31,5 +33,6 @@
 esp_err_t hub_config_set(const char *key, const char *value);
 
 /** Publikuje biezace ustawienia (retain, bez hasla): config (siec, gleba),
- *  config_drive (naped, PID), config_cal (pompka, INA226). */
+ *  config_drive (naped, PID), config_cal (pompka, INA226), config_nav
+ *  (geometria, hub_params.h) i config_tags/<id> (mapa palikow). */
 void hub_config_publish(void);

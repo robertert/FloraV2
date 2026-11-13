@@ -15,6 +15,8 @@
 
 #include "hub_config.h"
 #include "hub_drive.h"
+#include "hub_nav.h"
+#include "hub_params.h"
 #include "hub_sensorcal.h"
 #include "flora_pump.h"
 #include "flora_board.h"
@@ -194,10 +196,16 @@ esp_err_t hub_config_set(const char *key, const char *value)
                 break;
             }
         }
-        if (idx < 0) {
-            return ESP_ERR_NOT_SUPPORTED;
+        if (idx >= 0) {
+            err = set_pid(idx, value);
+        } else {
+            /* Parametry nawigacji same sie publikuja (config_nav). */
+            err = hub_params_set(key, value);
+            if (err == ESP_OK) {
+                ESP_LOGI(TAG, "zapisano %s = %s", key, value);
+            }
+            return err;
         }
-        err = set_pid(idx, value);
     }
 
     if (err == ESP_OK) {
@@ -273,4 +281,6 @@ void hub_config_publish(void)
                            "{\"pump_ml_s\":%g,\"ina_shunt\":%g,\"ina_shunt_active\":%g}",
                            hub_sensorcal_pump_ml_s(),
                            ina_saved, hub_sensorcal_ina_shunt_active());
+    hub_params_publish();
+    hub_nav_tags_publish();
 }
