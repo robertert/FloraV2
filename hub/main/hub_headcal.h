@@ -37,6 +37,25 @@ esp_err_t hub_headcal_mag(const char *arg);
  */
 esp_err_t hub_headcal_level(const char *arg);
 
+/**
+ * Rozstaw kol (cmd/track_cal "[obroty]", domyslnie 3, 1-10): robot obraca
+ * sie w miejscu N razy w lewo, potem N w prawo. Kat z kursu glowicy, drogi
+ * kol z enkoderow: rozstaw = (ds_P - ds_L) / kat. Wynik do NVS (track_mm)
+ * i na tele/track_cal. Robic po kalibracji magnetometru i kol.
+ */
+esp_err_t hub_headcal_track(const char *arg);
+
+/**
+ * Srednica i roznica kol (cmd/wheel_cal), dwa kroki:
+ *   "go [mm]"  zaznacz start, robot jedzie prosto o zadana droge z odometrii
+ *              (domyslnie 3000, 1000-10000); drogi kol i zmiana kursu
+ *              w pamieci, podsumowanie na tele/wheel_cal,
+ *   "<mm>"     odleglosc start-koniec z tasmy -> wheel_mm i wheel_ratio do NVS.
+ * Roznice kol liczy z kursu glowicy (luk zatoczony przy rownych drogach
+ * z odometrii); bez glowicy tylko skale. Na docelowym podlozu i z woda.
+ */
+esp_err_t hub_headcal_wheel(const char *arg);
+
 /** Kalibracja offsetu zyroskopu glowicy. Robot musi stac nieruchomo ~2 s. */
 esp_err_t hub_headcal_gyro(void);
 

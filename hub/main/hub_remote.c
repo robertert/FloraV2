@@ -246,6 +246,11 @@ static void on_cmd(const char *topic, size_t topic_len,
     else if (strcmp(cmd, "mag_cal") == 0)     { err = hub_ota_in_progress() ? ESP_ERR_INVALID_STATE
                                                                             : hub_headcal_mag(arg); }
     else if (strcmp(cmd, "head_gyro_cal") == 0) { err = hub_headcal_gyro(); }
+    else if (strcmp(cmd, "track_cal") == 0)   { err = hub_ota_in_progress() ? ESP_ERR_INVALID_STATE
+                                                                            : hub_headcal_track(arg); }
+    else if (strcmp(cmd, "wheel_cal") == 0)   { err = hub_ota_in_progress() ? ESP_ERR_INVALID_STATE
+                                                                            : hub_headcal_wheel(arg); }
+    else if (strcmp(cmd, "tag") == 0)         { err = hub_nav_tag_cmd(arg); }
     else if (strcmp(cmd, "pump_cal") == 0)    { err = hub_sensorcal_pump(arg); }
     else if (strcmp(cmd, "ina_cal") == 0)     { err = hub_sensorcal_ina(arg); }
     else if (strcmp(cmd, "level_cal") == 0)   { err = hub_ota_in_progress() ? ESP_ERR_INVALID_STATE
