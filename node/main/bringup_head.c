@@ -177,6 +177,8 @@ static void test_imu(void)
     flora_icm20948_cfg_t cfg = FLORA_ICM20948_DEFAULT_CFG();
     cfg.address  = FLORA_HEAD_ADDR_ICM;
     cfg.speed_hz = FLORA_HEAD_I2C_FREQ_HZ;
+    /* TYMCZASOWE: test, czy tryb przelotowy magnetometru kladzie magistrale. */
+    cfg.enable_magnetometer = false;
 
     esp_err_t err = flora_icm20948_init(s_bus, &cfg, &s_imu);
     if (err != ESP_OK) {

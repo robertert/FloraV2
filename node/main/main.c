@@ -40,6 +40,9 @@
 
 static const char *TAG = "glowica";
 
+/* TYMCZASOWE: test czujnikow na sucho bez podpietej kamery. Wroc na 0. */
+#define TEST_BEZ_KAMERY 1
+
 static i2c_master_bus_handle_t s_bus;
 
 /* Opisy portow muxa MUSZA zyc tak dlugo jak czujniki - sterownik VEML
@@ -102,6 +105,9 @@ static void start_task(void *arg)
      *    przez przegladarke wlacza sie flaga w flora_head_board.h, gdy
      *    trzeba wycelowac kamere, zebrac klatki albo ustawic jej wysokosc.
      *    Blad nie przerywa startu - reszta glowicy dziala bez obrazu. */
+    if (TEST_BEZ_KAMERY) {
+        ESP_LOGW(TAG, "TEST_BEZ_KAMERY: kamera i wizja wylaczone");
+    } else {
     if (FLORA_HEAD_CAM_NET_DEFAULT) {
         bringup_cam_preview();
     } else {
@@ -112,6 +118,7 @@ static void start_task(void *arg)
      *    trybie podgladu JPEG nie ma czego przetwarzac. Brak wizji nie
      *    przerywa startu - glowica dziala bez niej. */
     head_obstacles_start(head_link_down());
+    }
 
     ESP_LOGI(TAG, "petla sterowania dziala");
     vTaskDelete(NULL);
