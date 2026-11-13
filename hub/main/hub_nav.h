@@ -3,7 +3,8 @@
  * @brief Pozycja robota: EKF [x, y, theta, b] z odometrii, kursu glowicy,
  *        kompasu slonecznego i znacznikow AprilTag.
  *
- * Model i konwencje w components/flora_nav/include/flora_ekf.h.
+ * Model i konwencje w components/flora_nav/include/flora_ekf.h, logika
+ * taktu w flora_navcore.h (wspolna z odtwarzaniem nagran na komputerze).
  *
  * ================= WARIANTY =================
  * Kilka filtrow liczy sie ROWNOLEGLE na tych samych danych, kazdy z innym
@@ -116,3 +117,6 @@ int  hub_nav_tag_count(void);
 
 /** Publikuje cala mape (po polaczeniu z brokerem). */
 void hub_nav_tags_publish(void);
+
+/** Zapisuje mape palikow do nagrania (linie C i M, hub_rec). */
+void hub_nav_rec_tags(void);

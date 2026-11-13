@@ -193,6 +193,27 @@ znaczy czysto do konca zasiegu, a `-1` nieznane. Przelacznik `--grid` rysuje
 granice i numery wycinkow wprost na kadrze - bez tego trzeba liczyc wycinki
 palcem po ekranie. Sesje lezą w `tools/vision/data/` i NIE sa w repo.
 
+## Nagrywanie i odtwarzanie przejazdow (`tools/rec/`)
+
+Bryla na `cmd/rec on` wysyla na `rec/data` surowe wejscia nawigacji z kazdego
+taktu (enkodery, kurs i zyro z glowicy, slonce, znaczniki). Na komputerze ten
+sam kod filtra (`components/flora_nav`, `flora_navcore`) liczy je od nowa -
+bez zmian wychodzi to samo co na robocie, a ze zmienionym strojeniem albo
+kalibracja widac, co by bylo, na tym samym przejezdzie.
+
+```sh
+tools/rec/record.py --start -o kwadrat.log      # Ctrl+C konczy
+cd components/flora_nav/host
+cc -O2 -Wall -I../include -o replay replay.c ../flora_navcore.c \
+   ../flora_ekf.c ../flora_sun.c ../flora_sungate.c -lm
+./replay --end "0 0" kwadrat.log                 # blad zamkniecia kazdego wariantu
+./replay --head-floor 6 --deadband 3 kwadrat.log # inne strojenie
+./replay --csv traj.csv kwadrat.log && ../../../tools/rec/plot.py traj.csv --tags kwadrat.log
+sh replay_test.sh                                # test toru na syntetycznym nagraniu
+```
+
+Format linii: `components/flora_nav/include/flora_navlog.h`. Nagrania nie sa w repo.
+
 ## Wykrywanie przeszkod
 
 Glowica liczy 16 odleglosci i wysyla je w dol jako `FLORA_MSG_OBSTACLES`

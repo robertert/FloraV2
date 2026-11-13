@@ -25,6 +25,7 @@
 #include "hub_sensorcal.h"
 #include "hub_headcal.h"
 #include "hub_nav.h"
+#include "hub_rec.h"
 #include "hub_ota.h"
 #include "hub_remote.h"
 #include "hub_telemetry.h"
@@ -251,6 +252,7 @@ static void on_cmd(const char *topic, size_t topic_len,
     else if (strcmp(cmd, "wheel_cal") == 0)   { err = hub_ota_in_progress() ? ESP_ERR_INVALID_STATE
                                                                             : hub_headcal_wheel(arg); }
     else if (strcmp(cmd, "tag") == 0)         { err = hub_nav_tag_cmd(arg); }
+    else if (strcmp(cmd, "rec") == 0)         { err = hub_rec_cmd(arg); }
     else if (strcmp(cmd, "pump_cal") == 0)    { err = hub_sensorcal_pump(arg); }
     else if (strcmp(cmd, "ina_cal") == 0)     { err = hub_sensorcal_ina(arg); }
     else if (strcmp(cmd, "level_cal") == 0)   { err = hub_ota_in_progress() ? ESP_ERR_INVALID_STATE

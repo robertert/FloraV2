@@ -73,8 +73,15 @@ Stara kalibracja magnetometru jest celowo niewazna (nowy klucz NVS
 - [ ] **Reset pozy**: `cmd/pose_reset` z `"0 0 90"` przy robocie stojacym
       pod innym katem niz poprzednio. Kurs dalej przyjmowany (`n_head`
       rosnie, `n_rej` nie), `b_deg` ustawia sie od nowa.
-- [ ] **Kwadrat 5 x 5 m** (tasma na rogach): blad zamkniecia wariantow
-      `odom`, `head`, `full` - liczby do pracy. Powtorzyc na trawie.
+- [ ] **Nagranie**: `tools/rec/record.py --start`, przejazd, Ctrl+C.
+      `tele/rec` `drops: 0`, w podsumowaniu `zgubionych 0`.
+- [ ] **Zgodnosc odtworzenia**: `replay` na nagraniu bez opcji - poza
+      wariantow na koncu taka sama jak ostatnia `tele/pose*` z robota
+      (rozne = rozjazd kodu robota i komputera, zglosic).
+- [ ] **Kwadrat 5 x 5 m** (tasma na rogach), NAGRYWANY: blad zamkniecia
+      wariantow `odom`, `head`, `full` z `replay --end "0 0"` - liczby do
+      pracy. Powtorzyc na trawie. Potem strojenie na tych nagraniach
+      (`--head-floor`, `--deadband`, `--k-wheel`).
 
 ## 3. Odometria i naped (z wczesniejszych prac)
 

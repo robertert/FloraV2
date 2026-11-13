@@ -24,6 +24,7 @@
  *   cmd/track_cal    "[obroty]", rozstaw kol z obrotu w miejscu, hub_headcal.h
  *   cmd/wheel_cal    "go [mm]" potem "<mm z tasmy>", srednica i roznica kol
  *   cmd/tag          "<id> <x_mm> <y_mm>" | "<id> -" | "clear", mapa palikow, hub_nav.h
+ *   cmd/rec          on | off, nagrywanie przejazdu na rec/data, hub_rec.h
  *   cmd/pump_cal     "<ml>" zmierzone po ostatniej dawce, patrz hub_sensorcal.h
  *   cmd/ina_cal      "<A>" z multimetru, bocznik INA226 (po restarcie)
  *   cmd/pump         on | off | liczba ms | "ml <objetosc>" (po pump_cal)

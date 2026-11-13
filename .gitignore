@@ -41,3 +41,7 @@ tools/server/mosquitto/passwd
 components/flora_pid/host/test
 components/flora_nav/host/test
 components/flora_heading/host/test
+components/flora_nav/host/replay
+components/flora_nav/host/simlog
+# Nagrania przejazdow (tools/rec/record.py) - duze, trzymac poza repo.
+rec_*.log
