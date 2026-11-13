@@ -137,7 +137,9 @@ static void test_bme280(void)
     cfg.speed_hz = FLORA_HEAD_I2C_FREQ_HZ;
 
     esp_err_t err = flora_bme280_init(s_bus, &cfg, &s_bme);
-    if (err == ESP_ERR_NOT_FOUND) {
+    /* NACK pod zlym adresem wraca w IDF 6.1 jako INVALID_RESPONSE, nie
+     * tylko NOT_FOUND, wiec druga probe robimy przy kazdym bledzie. */
+    if (err != ESP_OK) {
         /* Moduly roznia sie stanem pinu SDO, wiec druga proba pod 0x77. */
         ESP_LOGW(TAG, "  brak pod 0x%02X, probuje 0x77", cfg.address);
         cfg.address = 0x77;
@@ -177,7 +179,7 @@ static void test_imu(void)
     cfg.speed_hz = FLORA_HEAD_I2C_FREQ_HZ;
 
     esp_err_t err = flora_icm20948_init(s_bus, &cfg, &s_imu);
-    if (err == ESP_ERR_NOT_FOUND) {
+    if (err != ESP_OK) {
         ESP_LOGW(TAG, "  brak pod 0x%02X, probuje 0x69", cfg.address);
         cfg.address = 0x69;
         err = flora_icm20948_init(s_bus, &cfg, &s_imu);

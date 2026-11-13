@@ -231,7 +231,8 @@ esp_err_t flora_icm20948_read(flora_icm20948_handle_t h, flora_icm20948_data_t *
     /* Akcelerometr, zyroskop i temperatura leza obok siebie - jeden
      * odczyt 14 bajtow daje spojna migawke wszystkich osi. */
     uint8_t d[14];
-    ESP_RETURN_ON_ERROR(bank_read(h, 0, B0_ACCEL_XOUT_H, d, sizeof(d)), TAG, "odczyt danych");
+    esp_err_t r = bank_read(h, 0, B0_ACCEL_XOUT_H, d, sizeof(d));
+    ESP_RETURN_ON_ERROR(r, TAG, "odczyt danych: %s", esp_err_to_name(r));
 
     for (int i = 0; i < 3; i++) {
         int16_t a = (int16_t)((d[i * 2] << 8) | d[i * 2 + 1]);
