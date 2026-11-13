@@ -165,7 +165,11 @@ void flora_encoders_speed_mm_s(const flora_encoders_sample_t *prev,
         if (out_right) *out_right = 0.0f;
         return;
     }
+    /* Z roznicy calkowitych zliczen, nie z narastajacych mm w float:
+     * po kilku km float gubi milimetry, a na takt 20 ms przypada ~2 mm,
+     * wiec kwant predkosci rosnie z przebiegiem i szarpie PID. */
     float dt_s = (float)dt_us / 1000000.0f;
-    if (out_left)  *out_left  = (now->left_mm  - prev->left_mm)  / dt_s;
-    if (out_right) *out_right = (now->right_mm - prev->right_mm) / dt_s;
+    float k = s_e.mm_per_count / dt_s;
+    if (out_left)  *out_left  = (float)(now->left_counts  - prev->left_counts)  * k;
+    if (out_right) *out_right = (float)(now->right_counts - prev->right_counts) * k;
 }
