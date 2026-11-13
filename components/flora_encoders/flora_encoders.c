@@ -18,7 +18,7 @@ typedef struct {
 static struct {
     enc_t  left;
     enc_t  right;
-    float  mm_per_count;
+    float  mm_l, mm_r;       /**< droga na zliczenie, osobno na kolo */
     bool   initialized;
 } s_e;
 
@@ -106,7 +106,7 @@ esp_err_t flora_encoders_init(const flora_encoders_cfg_t *cfg)
                         "mm_per_count musi byc dodatnie");
 
     memset(&s_e, 0, sizeof(s_e));
-    s_e.mm_per_count = cfg->mm_per_count;
+    s_e.mm_l = s_e.mm_r = cfg->mm_per_count;
 
     esp_err_t ret = ESP_OK;
     ESP_GOTO_ON_ERROR(enc_setup(&s_e.left, &cfg->left, cfg),   fail, TAG, "enkoder lewy");
@@ -141,8 +141,8 @@ esp_err_t flora_encoders_read(flora_encoders_sample_t *out)
 
     ESP_RETURN_ON_ERROR(enc_count(&s_e.left,  &out->left_counts),  TAG, "odczyt lewy");
     ESP_RETURN_ON_ERROR(enc_count(&s_e.right, &out->right_counts), TAG, "odczyt prawy");
-    out->left_mm      = (float)out->left_counts  * s_e.mm_per_count;
-    out->right_mm     = (float)out->right_counts * s_e.mm_per_count;
+    out->left_mm      = (float)out->left_counts  * s_e.mm_l;
+    out->right_mm     = (float)out->right_counts * s_e.mm_r;
     out->timestamp_us = esp_timer_get_time();
     return ESP_OK;
 }
@@ -169,7 +169,24 @@ void flora_encoders_speed_mm_s(const flora_encoders_sample_t *prev,
      * po kilku km float gubi milimetry, a na takt 20 ms przypada ~2 mm,
      * wiec kwant predkosci rosnie z przebiegiem i szarpie PID. */
     float dt_s = (float)dt_us / 1000000.0f;
-    float k = s_e.mm_per_count / dt_s;
-    if (out_left)  *out_left  = (float)(now->left_counts  - prev->left_counts)  * k;
-    if (out_right) *out_right = (float)(now->right_counts - prev->right_counts) * k;
+    if (out_left)  *out_left  = (float)(now->left_counts  - prev->left_counts)  * s_e.mm_l / dt_s;
+    if (out_right) *out_right = (float)(now->right_counts - prev->right_counts) * s_e.mm_r / dt_s;
+}
+
+esp_err_t flora_encoders_set_mm_per_count(float left, float right)
+{
+    ESP_RETURN_ON_FALSE(s_e.initialized, ESP_ERR_INVALID_STATE, TAG, "nie zainicjalizowano");
+    ESP_RETURN_ON_FALSE(left > 0.0f && right > 0.0f, ESP_ERR_INVALID_ARG, TAG,
+                        "mm_per_count musi byc dodatnie");
+    /* Dwa slowa bez blokady: czytelnik moze trafic na stare L i nowe P
+     * w jednym takcie - roznica rzedu promila, raz na kalibracje. */
+    s_e.mm_l = left;
+    s_e.mm_r = right;
+    return ESP_OK;
+}
+
+void flora_encoders_get_mm_per_count(float *left, float *right)
+{
+    if (left)  *left  = s_e.mm_l;
+    if (right) *right = s_e.mm_r;
 }

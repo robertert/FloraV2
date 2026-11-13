@@ -82,6 +82,15 @@ void flora_encoders_speed_mm_s(const flora_encoders_sample_t *prev,
                                const flora_encoders_sample_t *now,
                                float *out_left, float *out_right);
 
+/**
+ * Droga na zliczenie osobno dla kol (rozne skuteczne srednice, wynik
+ * cmd/wheel_cal). Dziala od nastepnego odczytu; zliczenia sie nie zeruja.
+ */
+esp_err_t flora_encoders_set_mm_per_count(float left, float right);
+
+/** Biezaca droga na zliczenie [mm]. */
+void flora_encoders_get_mm_per_count(float *left, float *right);
+
 #ifdef __cplusplus
 }
 #endif
