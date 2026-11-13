@@ -15,6 +15,10 @@ managed_components/
 .history/
 .idea/
 .DS_Store
+# Indeks clangd (podpowiedzi w edytorze), odtwarzany sam.
+.cache/
+# Pliki tymczasowe KiCada po przerwanym eksporcie.
+*-unsaved-export-*.kicad_prl
 
 # Cache interpretera Pythona w narzedziach wizyjnych.
 __pycache__/
