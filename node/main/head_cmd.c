@@ -23,6 +23,10 @@ static volatile bool     s_req_mag_cal;
 static volatile uint32_t s_mag_cal_s;
 static volatile bool     s_req_level;
 static volatile uint8_t  s_level_step;
+static volatile bool     s_hub_still;
+static volatile int64_t  s_hub_still_us;
+
+#define HUB_STILL_TIMEOUT_US 2000000   /**< bryla odswieza co 1 s */
 
 static void on_cmd(uint8_t type, const void *payload, uint8_t len, void *ctx)
 {
@@ -78,6 +82,12 @@ static void on_cmd(uint8_t type, const void *payload, uint8_t len, void *ctx)
         case FLORA_CMD_SET_SUN_GAIN:
             s_sun_gain     = (uint8_t)c->arg;
             s_req_sun_gain = true;
+            break;
+
+        case FLORA_CMD_SET_STILL:
+            /* Co sekunde - bez logu. */
+            s_hub_still    = c->arg != 0;
+            s_hub_still_us = esp_timer_get_time();
             break;
 
         default:
@@ -147,6 +157,11 @@ bool head_cmd_time_synced(void) { return s_time_synced; }
 uint32_t head_cmd_stamp(int64_t local_us)
 {
     return s_time_synced ? (uint32_t)(local_us + s_clock_offset_us) : (uint32_t)local_us;
+}
+
+bool head_cmd_hub_still(void)
+{
+    return s_hub_still && esp_timer_get_time() - s_hub_still_us < HUB_STILL_TIMEOUT_US;
 }
 
 bool head_cmd_take_level_cal(uint8_t *step)

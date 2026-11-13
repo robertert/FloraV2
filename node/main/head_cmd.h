@@ -31,6 +31,9 @@ int64_t head_cmd_clock_offset_us(void);
 /** Czy przyszedl juz TIME_SYNC. */
 bool head_cmd_time_synced(void);
 
+/** Bryla mowi, ze robot stoi (enkodery), i flaga jest swieza (< 2 s). */
+bool head_cmd_hub_still(void);
+
 /**
  * Znacznik czasu do wiadomosci: chwila `local_us` (nasz esp_timer)
  * w zegarze bryly, gdy jest synchronizacja; inaczej w naszym.

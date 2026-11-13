@@ -81,7 +81,7 @@ typedef struct {
 } flora_icm20948_data_t;
 
 typedef struct {
-    float field_ut[3];    /**< X, Y, Z w mikroteslach */
+    float field_ut[3];    /**< X, Y, Z w mikroteslach, w osiach akcelerometru */
     bool  overflow;       /**< pole poza zakresem - odczyt niewiarygodny */
 } flora_icm20948_mag_t;
 

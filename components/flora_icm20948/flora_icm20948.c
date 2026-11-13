@@ -264,10 +264,18 @@ esp_err_t flora_icm20948_read_mag(flora_icm20948_handle_t h, flora_icm20948_mag_
 
     /* Uwaga: magnetometr oddaje dane little-endian, odwrotnie niz
      * akcelerometr i zyroskop w tym samym ukladzie. */
+    float raw[3];
     for (int i = 0; i < 3; i++) {
         int16_t v = (int16_t)(d[i * 2] | (d[i * 2 + 1] << 8));
-        out->field_ut[i] = (float)v * AK_SCALE_UT;
+        raw[i] = (float)v * AK_SCALE_UT;
     }
+    /* AK09916 ma w obudowie ICM-20948 osie Y i Z odwrocone wzgledem
+     * akcelerometru i zyroskopu (rysunek orientacji osi w nocie). Bez tego
+     * kompensacja przechylu laczy pole z pitch/roll w innym ukladzie
+     * i zamiast znosic blad pochylenia - podwaja go. */
+    out->field_ut[0] =  raw[0];
+    out->field_ut[1] = -raw[1];
+    out->field_ut[2] = -raw[2];
     out->overflow = (d[7] & AK_ST2_HOFL) != 0;
     return ESP_OK;
 }

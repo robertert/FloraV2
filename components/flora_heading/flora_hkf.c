@@ -79,6 +79,34 @@ bool flora_hkf_update(flora_hkf_t *kf, float z_deg, float sigma_deg)
     return true;
 }
 
+bool flora_hkf_update_bias(flora_hkf_t *kf, float z_dps, float sigma_dps)
+{
+    /* H = [0 1]: mierzymy wprost b_z. */
+    float R = sigma_dps * sigma_dps;
+    float y = z_dps - kf->bz;
+    float S = kf->P[1][1] + R;
+    /* Bez bramki: po skoku temperatury dryf zmienia sie szybciej, niz
+     * zaklada q_bias, i bramka odrzucalaby postoj w nieskonczonosc. Ze
+     * robot naprawde stoi, pilnuje wolajacy (enkodery + prog obrotu). */
+    if (S <= 0.0f) {
+        return false;
+    }
+    float k0 = kf->P[0][1] / S, k1 = kf->P[1][1] / S;
+    kf->psi = wrap360(kf->psi + k0 * y);
+    kf->bz += k1 * y;
+
+    /* Joseph: A = I - K H = [1 -k0; 0 1-k1] */
+    float p00 = kf->P[0][0], p01 = kf->P[0][1], p11 = kf->P[1][1];
+    float b = 1.0f - k1;
+    float n00 = p00 - 2.0f * k0 * p01 + k0 * k0 * p11 + k0 * k0 * R;
+    float n01 = b * (p01 - k0 * p11) + k0 * k1 * R;
+    float n11 = b * b * p11 + k1 * k1 * R;
+    kf->P[0][0] = n00;
+    kf->P[0][1] = kf->P[1][0] = n01;
+    kf->P[1][1] = n11;
+    return true;
+}
+
 float flora_hkf_sigma(const flora_hkf_t *kf)
 {
     float p = kf->P[0][0] > 0.0f ? kf->P[0][0] : 0.0f;

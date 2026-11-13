@@ -177,7 +177,9 @@
 #define FLORA_HEAD_NVS_MAG_W11   "mag_w11"
 #define FLORA_HEAD_NVS_MAG_HREF  "mag_href"
 #define FLORA_HEAD_NVS_MAG_DIP   "mag_dip"
-#define FLORA_HEAD_NVS_MAG_OK    "mag_cal_ok"
+/* Nowy klucz po przemapowaniu osi magnetometru: kalibracja zapisana
+ * w starych osiach ("mag_cal_ok") jest niewazna i nie moze sie wczytac. */
+#define FLORA_HEAD_NVS_MAG_OK    "mag_cal_ok2"
 /* Poziom akcelerometru: przekrzywienie plytki wzgledem masztu [st]. */
 #define FLORA_HEAD_NVS_LVL_PITCH "lvl_pitch"
 #define FLORA_HEAD_NVS_LVL_ROLL  "lvl_roll"

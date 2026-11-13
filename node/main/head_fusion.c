@@ -46,6 +46,20 @@ static const char *TAG = "fusion";
  * flaga TILTED. Korekta dziala dalej, ale blad rosnie nieliniowo. */
 #define TILT_LIMIT_DEG 35.0f
 
+/* Pochylenie i przechyl: filtr komplementarny (head_tilt_fuse). */
+#define TILT_TAU_S       1.0f    /**< korekta z akcelerometru; drgania masztu sa szybsze */
+#define TILT_MAX_G_DEV   0.08f   /**< dalej od 1 g akcelerometr nie poprawia */
+#define TILT_MAX_GAP_S   0.5f    /**< po dluzszej przerwie start od samego akcelerometru */
+/* Gdy wypadkowa odbiega od 1 g, pochylenie niesie sam zyroskop - magnetometr
+ * dostaje wtedy wieksza sigma, jak przy duzym przechyle. */
+#define MAG_MAX_G_DEV    0.05f
+
+/* --- ZUPT: dryf zyroskopu na postoju --- */
+#define ZUPT_SAMPLES       60     /**< 1 s przy 60 Hz */
+#define ZUPT_MAX_RATE_DPS  2.0f   /**< glowica nie moze sie obracac (np. recznie) */
+#define ZUPT_MAX_G_DEV     0.03f
+#define ZUPT_SIGMA_DPS     0.05f  /**< niepewnosc sredniej z 1 s */
+
 /* --- kalibracja offsetu --- */
 #define CAL_SAMPLES        120    /**< 2 s przy 60 Hz */
 #define CAL_MAX_RATE_DPS   2.0f   /**< powyzej tego uznajemy ruch */
@@ -69,7 +83,15 @@ static struct {
     float     mag_heading;
     bool      mag_valid;      /**< jest swiezy, niezaklocony pomiar */
     bool      mag_seen;       /**< magnetometr w ogole odpowiada */
-    head_attitude_t att;
+    head_attitude_t att;        /**< po offsecie poziomu - tego uzywa reszta */
+    head_attitude_t tilt_raw;   /**< wyjscie filtra, bez offsetu */
+    bool      tilt_init;
+    int64_t   tilt_last_us;
+
+    /* ZUPT */
+    int       zupt_n;
+    double    zupt_sum;
+    uint32_t  zupt_count;
 
     /* magnetometr: kalibracja i zaklocenia */
     flora_magcal_t  mag_cal;
@@ -472,7 +494,8 @@ static void mag_step(void)
     s_f.mag_heading = head_heading_tilt_compensated(m, s_f.att);
 
     bool tilted = fabsf(s_f.att.roll_deg) > TILT_LIMIT_DEG ||
-                  fabsf(s_f.att.pitch_deg) > TILT_LIMIT_DEG;
+                  fabsf(s_f.att.pitch_deg) > TILT_LIMIT_DEG ||
+                  fabsf(s_f.att.magnitude_g - 1.0f) > MAG_MAX_G_DEV;
     float sigma = tilted ? MAG_SIGMA_TILTED_DEG : MAG_SIGMA_DEG;
 
     bool agrees = s_f.state != HEAD_FUSION_RUN ||
@@ -487,6 +510,49 @@ static void mag_step(void)
 }
 
 /* ================= TELEMETRIA ================= */
+
+/**
+ * Tempo zmiany kursu kompasowego [st/s], dodatnie W PRAWO (CW).
+ *
+ * Osie IMU: Z w gore, wiec dodatnie omega_z to obrot W LEWO (CCW),
+ * a kurs z magnetometru rosnie w prawo. Bez tej zamiany zyroskop
+ * i magnetometr ciagna kurs w przeciwne strony.
+ */
+static inline float heading_rate_dps(const flora_icm20948_data_t *d)
+{
+    return -d->gyro_dps[2];
+}
+
+/**
+ * ZUPT: na postoju srednie tempo kursu z zyroskopu to sam dryf.
+ * Postoj mowi bryla (enkodery), a glowica sprawdza, czy sama sie nie
+ * obraca - przy recznej kalibracji ktos moze krecic zdjeta glowica,
+ * gdy kola stoja. Wolane w RUN, po predykcji.
+ */
+static void zupt_step(const flora_icm20948_data_t *d)
+{
+    float r = heading_rate_dps(d);
+    bool quiet = head_cmd_hub_still() && !s_f.collecting &&
+                 fabsf(d->gyro_dps[0]) < ZUPT_MAX_RATE_DPS &&
+                 fabsf(d->gyro_dps[1]) < ZUPT_MAX_RATE_DPS &&
+                 fabsf(r) < ZUPT_MAX_RATE_DPS &&
+                 fabsf(s_f.att.magnitude_g - 1.0f) < ZUPT_MAX_G_DEV;
+    if (!quiet) {
+        s_f.zupt_n   = 0;
+        s_f.zupt_sum = 0.0;
+        return;
+    }
+    s_f.zupt_sum += r;
+    if (++s_f.zupt_n < ZUPT_SAMPLES) {
+        return;
+    }
+    float z = (float)(s_f.zupt_sum / s_f.zupt_n);
+    if (flora_hkf_update_bias(&s_f.kf, z, ZUPT_SIGMA_DPS) && s_f.zupt_count++ == 0) {
+        ESP_LOGI(TAG, "ZUPT: pierwszy pomiar dryfu na postoju, %.3f st/s", z);
+    }
+    s_f.zupt_n   = 0;
+    s_f.zupt_sum = 0.0;
+}
 
 static float heading_sigma(void)
 {
@@ -515,7 +581,7 @@ static void send_attitude(int64_t sample_us, const flora_icm20948_data_t *d)
     flora_attitude_t m = {
         .timestamp_us  = head_cmd_stamp(sample_us),
         .heading_cdeg  = (uint16_t)lroundf(head_wrap360(s_f.kf.psi) * 100.0f) % 36000,
-        .rate_z_cdps   = (int16_t)lroundf(d->gyro_dps[2] * 100.0f),
+        .rate_z_cdps   = (int16_t)lroundf(heading_rate_dps(d) * 100.0f),
         .pitch_cdeg    = (int16_t)lroundf(s_f.att.pitch_deg * 100.0f),
         .roll_cdeg     = (int16_t)lroundf(s_f.att.roll_deg * 100.0f),
         .quality       = quality,
@@ -611,7 +677,19 @@ static void fusion_task(void *arg)
             go(HEAD_FUSION_ALIGN);
         }
 
-        s_f.att = head_attitude_from_accel(d.accel_g);
+        /* Pochylenie i przechyl: zyroskop + powolna korekta z akcelerometru.
+         * Po przerwie (FAULT, start) od nowa z samego akcelerometru. */
+        float tdt = s_f.tilt_init ? (float)(sample_us - s_f.tilt_last_us) / 1e6f : 0.0f;
+        if (tdt > 0.0f && tdt < TILT_MAX_GAP_S) {
+            s_f.tilt_raw = head_tilt_fuse(s_f.tilt_raw, d.gyro_dps, d.accel_g, tdt,
+                                          TILT_TAU_S, TILT_MAX_G_DEV);
+        } else {
+            s_f.tilt_raw = head_attitude_from_accel(d.accel_g);
+        }
+        s_f.tilt_init    = true;
+        s_f.tilt_last_us = sample_us;
+
+        s_f.att = s_f.tilt_raw;
         s_f.att.pitch_deg -= s_f.lvl_off_pitch;   /* przekrzywienie plytki */
         s_f.att.roll_deg  -= s_f.lvl_off_roll;
 
@@ -663,8 +741,9 @@ static void fusion_task(void *arg)
         float dt_s = (float)(sample_us - s_f.last_us) / 1000000.0f;
         s_f.last_us = sample_us;
         if (dt_s > 0.0f && dt_s < 0.5f) {
-            flora_hkf_predict(&s_f.kf, d.gyro_dps[2], dt_s);
+            flora_hkf_predict(&s_f.kf, heading_rate_dps(&d), dt_s);
         }
+        zupt_step(&d);
 
         /* --- komendy kalibracji --- */
         uint8_t lstep;

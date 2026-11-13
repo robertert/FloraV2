@@ -59,6 +59,53 @@ static inline head_attitude_t head_attitude_from_accel(const float a[3])
 }
 
 /**
+ * @brief Filtr komplementarny pochylenia i przechylu.
+ *
+ * Sam akcelerometr widzi tez przyspieszenia: drgania masztu przy jezdzie
+ * po trawie i ruszanie/hamowanie. Kazdy stopien bledu pochylenia wchodzi
+ * w kompensacje przechylu magnetometru razy ~tan(inklinacji), w Krakowie
+ * ~2,2 st kursu. Zyroskop niesie szybkie zmiany, akcelerometr powoli
+ * ciagnie wynik do grawitacji ze stala czasowa tau.
+ *
+ * Katy Eulera Z-Y-X jak w head_attitude_from_accel(): przechyl wokol X,
+ * pochylenie wokol Y. Ich pochodne z predkosci w osiach plytki:
+ *   roll'  = p + tan(pitch) (q sin roll + r cos roll)
+ *   pitch' = q cos roll - r sin roll
+ *
+ * Gdy wypadkowa odbiega od 1 g o wiecej niz max_g_dev, akcelerometr
+ * jest pomijany - wynik wtedy niesie sam zyroskop.
+ *
+ * @param prev       poprzedni wynik (surowy, bez offsetu poziomu)
+ * @param gyro_dps   X, Y, Z po offsecie
+ * @param accel_g    X, Y, Z
+ * @param tau_s      stala czasowa korekty z akcelerometru
+ * @return nowy wynik; magnitude_g z biezacego akcelerometru
+ */
+static inline head_attitude_t head_tilt_fuse(head_attitude_t prev, const float gyro_dps[3],
+                                             const float accel_g[3], float dt_s,
+                                             float tau_s, float max_g_dev)
+{
+    head_attitude_t acc = head_attitude_from_accel(accel_g);
+    if (dt_s <= 0.0f || fabsf(prev.pitch_deg) > 80.0f) {
+        return acc;   /* brak kroku albo blisko osobliwosci tan(pitch) */
+    }
+    float sr = sinf(prev.roll_deg * HEAD_DEG2RAD), cr = cosf(prev.roll_deg * HEAD_DEG2RAD);
+    float tp = tanf(prev.pitch_deg * HEAD_DEG2RAD);
+    head_attitude_t out = prev;
+    out.roll_deg  += (gyro_dps[0] + tp * (gyro_dps[1] * sr + gyro_dps[2] * cr)) * dt_s;
+    out.pitch_deg += (gyro_dps[1] * cr - gyro_dps[2] * sr) * dt_s;
+    out.magnitude_g = acc.magnitude_g;
+
+    if (fabsf(acc.magnitude_g - 1.0f) <= max_g_dev && tau_s > 0.0f) {
+        float a = dt_s / (tau_s + dt_s);
+        out.roll_deg  += a * head_angle_diff(acc.roll_deg, out.roll_deg);
+        out.pitch_deg += a * (acc.pitch_deg - out.pitch_deg);
+    }
+    out.roll_deg = head_angle_diff(out.roll_deg, 0.0f);   /* do -180..180 */
+    return out;
+}
+
+/**
  * @brief Kurs magnetyczny z korekta przechylu.
  *
  * Bez korekty kurs z magnetometru jest poprawny TYLKO przy pionowym maszcie.
@@ -71,7 +118,9 @@ static inline head_attitude_t head_attitude_from_accel(const float a[3])
  *
  * @param m  pole magnetyczne w uT, osie jak w akcelerometrze
  * @param at pochylenie i przechyl z head_attitude_from_accel()
- * @return kurs w stopniach, 0..360, liczony od osi X w strone Y
+ * @return kurs w stopniach, 0..360, liczony od osi X w strone Y.
+ *         Przy X do przodu i Y w lewo to kurs kompasowy (CW od polnocy),
+ *         o ile m jest w osiach akcelerometru (sterownik przemapowuje AK09916).
  */
 static inline float head_heading_tilt_compensated(const float m[3],
                                                   head_attitude_t at)

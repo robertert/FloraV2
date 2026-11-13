@@ -13,7 +13,8 @@
  *  - pomiar magnetometru przechodzi bramke: skok kursu niezgodny z zyro
  *    (przejazd obok stalowego przedmiotu) jest odrzucany i liczony.
  *
- * Konwencja zgodna z head_fusion: kurs rosnie z dodatnim omega_z.
+ * Konwencja: omega_dps to tempo zmiany KURSU (dodatnie w prawo, CW), nie
+ * surowe omega_z IMU - head_fusion podaje -gyro_z, bo Z IMU jest w gore.
  * Czysty C, bez ESP-IDF - sprawdzane w host/test.c.
  */
 #pragma once
@@ -68,6 +69,15 @@ bool flora_hkf_would_accept(const flora_hkf_t *kf, float z_deg, float sigma_deg)
 
 /** Pomiar kursu magnetycznego. false = odrzucony przez bramke. */
 bool flora_hkf_update(flora_hkf_t *kf, float z_deg, float sigma_deg);
+
+/**
+ * ZUPT: pomiar dryfu na postoju. Robot stoi (enkodery bryly) i glowica
+ * nie obraca sie, wiec srednie wskazanie zyroskopu to sam dryf.
+ *
+ * @param z_dps      srednie tempo kursu z zyroskopu w oknie postoju
+ * @param sigma_dps  niepewnosc tej sredniej
+ */
+bool flora_hkf_update_bias(flora_hkf_t *kf, float z_dps, float sigma_dps);
 
 /** Niepewnosc kursu do wyslania: sqrt(P_psipsi + sigma_floor^2). */
 float flora_hkf_sigma(const flora_hkf_t *kf);
