@@ -78,14 +78,26 @@ Stara kalibracja magnetometru jest celowo niewazna (nowy klucz NVS
 
 ## 3. Odometria i naped (z wczesniejszych prac)
 
-- [ ] **Srednica kola** na DOCELOWYM robocie, z pelnym zbiornikiem, na
-      trawie: `bringup_drive_calibrate()` (`hub/main/main.c`), kilka
-      przejazdow, linijka. Wpisac `FLORA_WHEEL_DIAMETER_MM` (dzis 124,
-      zmierzone na platformie testowej). Ewentualnie powtorzyc z pustym
-      zbiornikiem - roznica pokaze, jak bardzo plywa w ciagu dnia.
-- [ ] **Rozstaw kol (UMBmark)**: 10 obrotow w miejscu, porownac kat
-      z kursu glowicy z odometria: `track = (ds_r - ds_l) / kat_zyro`.
-      Wpisac `FLORA_TRACK_MM` (dzis 390, tymczasowe).
+Kolejnosc: kola -> rozstaw -> kola jeszcze raz (roznica kol zalezy
+od rozstawu i odwrotnie, druga runda dociaga obie). Wymaga glowicy
+z kursem (etap 1). Wyniki trafiaja do NVS od razu, bez flashowania;
+stan i flagi `*_set` na `config_nav`.
+
+- [ ] **Srednica i roznica kol** na DOCELOWYM robocie, z pelnym
+      zbiornikiem, na docelowym podlozu:
+  - [ ] zaznaczyc punkt startu (np. srodek osi kol), `cmd/wheel_cal go`
+        (3 m prosto; `go 5000` dla dluzszego),
+  - [ ] zmierzyc tasma odleglosc start-koniec w linii prostej,
+        `cmd/wheel_cal <mm>`,
+  - [ ] na `tele/wheel_cal`: `scale_l`/`scale_r` blisko 1, `wheel_ratio`
+        w granicach ~0,97-1,03. Powtorzyc 2-3 razy, wyniki maja byc zgodne.
+  - [ ] Opcjonalnie z pustym zbiornikiem - pokaze, ile plywa w ciagu dnia.
+- [ ] **Rozstaw kol**: `cmd/track_cal` (3 obroty w lewo, 3 w prawo).
+      Na `tele/track_cal` `status: ok`, `left_turn_mm` i `right_turn_mm`
+      roznia sie < 5%. Na trawie wyjdzie wiecej niz na podlodze - to
+      poslizg w skrecie, dlatego kalibrowac na docelowym podlozu.
+- [ ] **Recznie** (gdy trzeba): `cmd/config/track_mm`, `wheel_mm`,
+      `wheel_ratio`; `-` wraca do stalych z `flora_board.h`.
 - [ ] **PID predkosci** (procedura w `hub/main/hub_drive.h`), wykres na
       `tele/pid`:
   - [ ] `cmd/config/drive_mode pid`, nastawy na 0, kola w powietrzu,
@@ -107,11 +119,12 @@ Stara kalibracja magnetometru jest celowo niewazna (nowy klucz NVS
 - [ ] **Odleglosc z ukosa** (nowy wzor z pionowych bokow): ten sam
       znacznik obrocony o 45 st wokol pionu, ta sama odleglosc - wynik
       w granicach ~3%. Potem znacznik przy brzegu kadru.
-- [ ] **Polozenie kamery** wzgledem srodka osi kol: zmierzyc i wpisac
-      `FLORA_NAV_CAM_X_MM` / `FLORA_NAV_CAM_Y_MM` (dzis 295 / 0, tymczasowo).
-- [ ] **Mapa palikow**: rozstawic paliki, zmierzyc polozenia tasma,
-      wpisac do `s_tag_map` w `hub/main/hub_nav.c`. Dopiero wtedy wariant
-      `full` rozni sie od `head_sun`.
+- [ ] **Polozenie kamery** wzgledem srodka osi kol: zmierzyc i ustawic
+      `cmd/config/cam_x_mm`, `cmd/config/cam_y_mm` (dzis 295 / 0, tymczasowo).
+- [ ] **Mapa palikow**: rozstawic paliki, zmierzyc polozenia tasma w ukladzie
+      mapy, kazdy `cmd/tag "<id> <x_mm> <y_mm>"` (max 16). Widac je na
+      `config_tags/<id>`, liczbe na `config_nav`. Dopiero wtedy wariant
+      `full` rozni sie od `head_sun`. Po restarcie mapa zostaje (NVS).
 - [ ] Na postoju przed palikiem `n_tag` rosnie, `spos_mm` spada.
 
 ## 5. Kompas sloneczny
@@ -123,8 +136,8 @@ Stara kalibracja magnetometru jest celowo niewazna (nowy klucz NVS
       (przod robota) - zalozenie z `hub_nav.c`.
 - [ ] Sloneczny dzien: `tele/nav_sun` `gate: 0`, `sun_vs_mag_deg`
       w granicach kilku stopni. Staly offset = montaz krzyza, do odjecia.
-- [ ] **Miejsce pracy**: `FLORA_SITE_LAT_DEG`, `FLORA_SITE_LON_DEG`,
-      `FLORA_MAG_DECLINATION_DEG` na wspolrzedne ogrodu (dzis Krakow).
+- [ ] **Miejsce pracy**: `cmd/config/site_lat`, `site_lon`, `mag_decl`
+      na wspolrzedne ogrodu (dzis Krakow; deklinacja z kalkulatora NOAA).
 
 ## 6. Przeszkody
 

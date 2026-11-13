@@ -76,7 +76,6 @@ Polecana kolejnosc: nagrywanie/odtwarzanie -> testy w CI -> DLI.
   `flora_ground` przy kazdym pushu.
 - **Zrzut przyczyny awarii** - coredump do flash, po restarcie skrot na
   MQTT (zadanie, adres, backtrace).
-- **Mapa tagow w NVS / przez MQTT** zamiast `s_tag_map` w kodzie.
 
 ### Funkcje "doniczkowe"
 - **Powiadomienia** - alerty Grafany albo bot Telegram: malo wody, niska
@@ -91,5 +90,6 @@ Polecana kolejnosc: nagrywanie/odtwarzanie -> testy w CI -> DLI.
   wszystkich osiach (dzis 2D, os Z nieskorygowana).
 - **Samouczenie mapy tagow** - pozycje palikow z odometrii i kursu
   (mini SLAM); dobre na rozdzial "rozszerzenia".
-- **Pozostale kalibracje** - rozstaw kol (UMBmark), offset i strefa
-  martwa sonarow, wzmocnienia kanalow VEML, ogniskowa kamery tagow.
+- **Pozostale kalibracje** - offset i strefa martwa sonarow, wzmocnienia
+  kanalow VEML, ogniskowa kamery tagow (rozstaw i kola: cmd/track_cal,
+  cmd/wheel_cal).
