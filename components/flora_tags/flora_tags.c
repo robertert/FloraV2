@@ -93,6 +93,42 @@ esp_err_t flora_tags_deinit(void)
     return ESP_OK;
 }
 
+static float side_px(const apriltag_detection_t *d, int i)
+{
+    int j = (i + 1) % 4;
+    float dx = (float)(d->p[j][0] - d->p[i][0]);
+    float dy = (float)(d->p[j][1] - d->p[i][1]);
+    return sqrtf(dx * dx + dy * dy);
+}
+
+/**
+ * Glebokosc srodka znacznika [mm] z jego PIONOWYCH bokow.
+ *
+ * Znacznik na pionowym paliku, kamera pozioma: przy patrzeniu z ukosa
+ * skracaja sie boki poziome (obrot wokol pionu), pionowe nie - kazdy
+ * jest tylko odwrotnie proporcjonalny do glebokosci swojej krawedzi.
+ * Srednia z czterech bokow zanizalaby rozmiar i zawyzala odleglosc.
+ * Glebokosc srodka to srednia glebokosci obu krawedzi pionowych.
+ *
+ * Ktora para jest pionowa, rozstrzyga kierunek bokow w obrazie (znacznik
+ * moze byc naklejony obrocony o 90 st).
+ */
+static float depth_mm(const apriltag_detection_t *d, float focal_px, float tag_mm)
+{
+    float vert_a = 0.0f, vert_b = 0.0f;   /* "pionowosc" par (0,2) i (1,3) */
+    for (int i = 0; i < 4; i++) {
+        int j = (i + 1) % 4;
+        float v = fabsf((float)(d->p[j][1] - d->p[i][1])) - fabsf((float)(d->p[j][0] - d->p[i][0]));
+        if (i % 2 == 0) vert_a += v; else vert_b += v;
+    }
+    int first = vert_a >= vert_b ? 0 : 1;
+    float l1 = side_px(d, first), l2 = side_px(d, first + 2);
+    if (l1 < 1.0f || l2 < 1.0f) {
+        return 0.0f;
+    }
+    return 0.5f * focal_px * tag_mm * (1.0f / l1 + 1.0f / l2);
+}
+
 /** Sredni bok znacznika w pikselach, z czterech naroznikow. */
 static float apparent_size_px(const apriltag_detection_t *d)
 {
@@ -150,16 +186,19 @@ esp_err_t flora_tags_detect(const uint8_t *gray, uint16_t w, uint16_t h,
         o->decision_margin = d->decision_margin;
 
         if (s_t.cfg.focal_px > 0.0f) {
-            float px = apparent_size_px(d);
-            if (px > 1.0f) {
-                /* Podobienstwo trojkatow: im mniejszy obraz, tym dalej. */
-                o->distance_mm = s_t.cfg.focal_px * s_t.cfg.tag_size_mm / px;
-            }
             /* Azymut z przesuniecia srodka. Dla obiektywow szerokokatnych
              * jest to przyblizenie - dystorsja beczkowa zawyza kat na
              * brzegach obrazu i wymagalaby pelnej kalibracji. */
-            o->bearing_deg = atanf((o->center_x - cx) / s_t.cfg.focal_px)
-                             * 180.0f / (float)M_PI;
+            float bearing = atanf((o->center_x - cx) / s_t.cfg.focal_px);
+            o->bearing_deg = bearing * 180.0f / (float)M_PI;
+
+            /* Podobienstwo trojkatow daje GLEBOKOSC (wzdluz osi kamery);
+             * EKF chce odleglosci w linii prostej, wiec dzielimy przez cos
+             * azymutu - na brzegu kadru to kilka procent. */
+            float z = depth_mm(d, s_t.cfg.focal_px, s_t.cfg.tag_size_mm);
+            if (z > 0.0f) {
+                o->distance_mm = z / cosf(bearing);
+            }
         }
 
         /* Jakosc z DWOCH czynnikow, bo oba psuja pomiar inaczej:

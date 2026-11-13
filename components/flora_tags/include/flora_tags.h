@@ -84,7 +84,7 @@ typedef struct {
 /** Jedna detekcja, przeliczona na wielkosci fizyczne. */
 typedef struct {
     uint16_t id;
-    float    distance_mm;    /**< z pozornego rozmiaru; 0 gdy brak ogniskowej */
+    float    distance_mm;    /**< w linii prostej, z pionowych bokow i azymutu; 0 gdy brak ogniskowej */
     float    bearing_deg;    /**< dodatni w prawo od osi obrazu */
     float    center_x, center_y;  /**< srodek w pikselach, do diagnozy */
     float    decision_margin;
