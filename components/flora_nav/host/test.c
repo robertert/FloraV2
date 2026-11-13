@@ -257,13 +257,92 @@ int main(int argc, char **argv)
     flora_ekf_init(&e, &cfg);
     e.x[3] = 0.0f;
     e.P[3][3] = 1e-6f;
-    flora_ekf_set_pose(&e, 0, 0, D2R(178.0f), 10.0f, D2R(5.0f));
+    flora_ekf_set_pose(&e, 0, 0, D2R(178.0f), 10.0f, D2R(5.0f), false);
     /* prawdziwy kat -178 st, czyli 4 st dalej przez pi; psi = b - th */
     for (int i = 0; i < 20; i++) flora_ekf_update_heading(&e, -D2R(-178.0f), D2R(1.0f));
     check(fabsf(R2D(flora_ekf_wrap(e.x[2] - D2R(-178.0f)))) < 0.5f && fabsf(e.x[2]) > 3.0f,
           "kat przechodzi przez +-pi bez skoku przez zero");
     flora_ekf_predict_odom(&e, -100.0f, 100.0f, DT);
     check(e.x[2] > -(float)M_PI && e.x[2] <= (float)M_PI, "kat po predykcji w (-pi, pi]");
+
+    /* ---- reset pozy z innym katem: kurs nie moze zostac odciety ---- */
+    {
+        flora_ekf_t r;
+        flora_ekf_init(&r, &cfg);
+        rng_t m = { 99 };
+        float th = 0.0f;   /* prawdziwy kat robota */
+        for (int i = 0; i < 20; i++) flora_ekf_update_heading(&r, B_TRUE - th + rnd_n(&m, HEAD_SIGMA), D2R(5.0f));
+        /* Robot przeniesiony recznie i obrocony o 90 st; operator podaje to theta. */
+        th = D2R(90.0f);
+        flora_ekf_set_pose(&r, 1000.0f, 0.0f, th, 20.0f, D2R(2.0f), true);
+        uint32_t acc0 = r.n_heading;
+        for (int i = 0; i < 10; i++) flora_ekf_update_heading(&r, B_TRUE - th + rnd_n(&m, HEAD_SIGMA), D2R(5.0f));
+        check(r.n_heading - acc0 >= 9 && fabsf(R2D(flora_ekf_wrap(r.x[2] - th))) < 3.0f,
+              "pose_reset o 90 st: kurs dalej przyjmowany, theta zostaje");
+        check(p_is_sane(&r), "pose_reset: P poprawna");
+    }
+
+    /* ---- poslizg: kola widza obrot o 90 st, robot stoi ---- */
+    {
+        flora_ekf_t r;
+        flora_ekf_init(&r, &cfg);
+        rng_t m = { 5 };
+        for (int i = 0; i < 20; i++) flora_ekf_update_heading(&r, B_TRUE + rnd_n(&m, HEAD_SIGMA), D2R(5.0f));
+        int n = (int)(90.0f / (TURN_DPS * DT));
+        float arc = 0.5f * W_NOMINAL * D2R(TURN_DPS) * DT;
+        for (int i = 0; i < n; i++) flora_ekf_predict_odom(&r, -arc, arc, DT);
+        uint32_t rej0 = r.n_rejected;
+        /* 20 pomiarow kursu (10 s przy 0,5 s), prawdziwe theta = 0 */
+        for (int i = 0; i < 20; i++) flora_ekf_update_heading(&r, B_TRUE + rnd_n(&m, HEAD_SIGMA), D2R(5.0f));
+        printf("  poslizg 90 st: odrzucone %u, wyjscia z blokady %u, blad kata %.1f st\n",
+               r.n_rejected - rej0, r.n_recovered, fabsf(R2D(r.x[2])));
+        check(r.n_recovered >= 1 && fabsf(R2D(r.x[2])) < 5.0f,
+              "poslizg 90 st: kompas po blokadzie przywraca kat (< 5 st)");
+        check(p_is_sane(&r), "poslizg: P poprawna");
+    }
+
+    /* ---- poslizg + zyroskop: kurs przyjety od razu, bez blokady ---- */
+    {
+        flora_ekf_t r;
+        flora_ekf_init(&r, &cfg);
+        rng_t m = { 6 };
+        for (int i = 0; i < 20; i++) flora_ekf_update_heading(&r, B_TRUE + rnd_n(&m, HEAD_SIGMA), D2R(5.0f));
+        int n = (int)(90.0f / (TURN_DPS * DT));
+        float arc = 0.5f * W_NOMINAL * D2R(TURN_DPS) * DT;
+        for (int i = 0; i < n; i++) {
+            flora_ekf_predict_odom(&r, -arc, arc, DT);
+            flora_ekf_observe_gyro(&r, 0.0f);   /* zyroskop: robot stoi */
+        }
+        uint32_t rej0 = r.n_rejected;
+        bool took = flora_ekf_update_heading(&r, B_TRUE + rnd_n(&m, HEAD_SIGMA), D2R(5.0f));
+        for (int i = 0; i < 5; i++) flora_ekf_update_heading(&r, B_TRUE + rnd_n(&m, HEAD_SIGMA), D2R(5.0f));
+        printf("  poslizg 90 st z zyroskopem: pierwszy kurs %s, blad kata %.1f st\n",
+               took ? "przyjety" : "odrzucony", fabsf(R2D(r.x[2])));
+        check(took && r.n_rejected == rej0 && fabsf(R2D(r.x[2])) < 5.0f,
+              "poslizg 90 st + zyro: pierwszy kurs przyjety, kat poprawiony");
+        check(p_is_sane(&r), "poslizg + zyro: P poprawna");
+    }
+
+    /* ---- zwykly skret z zyroskopem opoznionym o 60 ms: bez sztucznej niepewnosci ---- */
+    {
+        flora_ekf_t r, ref;
+        flora_ekf_init(&r, &cfg);
+        for (int i = 0; i < 20; i++) flora_ekf_update_heading(&r, B_TRUE, D2R(5.0f));
+        ref = r;
+        int n = (int)(90.0f / (TURN_DPS * DT));
+        float arc = 0.5f * W_NOMINAL * D2R(TURN_DPS) * DT;
+        const int lag = 3;   /* 3 takty = 60 ms */
+        for (int i = 0; i < n + lag; i++) {
+            float dl = i < n ? -arc : 0.0f, dr = i < n ? arc : 0.0f;
+            flora_ekf_predict_odom(&r, dl, dr, DT);
+            flora_ekf_predict_odom(&ref, dl, dr, DT);
+            float g = (i >= lag && i < n + lag) ? 2.0f * arc / W_NOMINAL : 0.0f;
+            flora_ekf_observe_gyro(&r, g * 1.01f);   /* + 1% bledu skali zyro */
+        }
+        float extra = R2D(sqrtf(r.P[2][2])) - R2D(sqrtf(ref.P[2][2]));
+        printf("  zwykly skret 90 st, zyro opoznione 60 ms: dodatkowa sigma theta %.2f st\n", extra);
+        check(extra < 0.1f, "zwykly skret: opoznienie zyro miesci sie w martwej strefie");
+    }
 
     /* ---- slonce (Krakow) ---- */
     const double lat = 50.06, lon = 19.94;

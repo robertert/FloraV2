@@ -364,9 +364,9 @@ static void pub_pose(void)
                                "{\"x_mm\":%.0f,\"y_mm\":%.0f,\"th_deg\":%.1f,\"b_deg\":%.1f,"
                                "\"sx_mm\":%.0f,\"sy_mm\":%.0f,\"sth_deg\":%.2f,\"spos_mm\":%.0f,"
                                "\"src\":%u,\"n_head\":%" PRIu32 ",\"n_sun\":%" PRIu32
-                               ",\"n_tag\":%" PRIu32 ",\"n_rej\":%" PRIu32 "}",
+                               ",\"n_tag\":%" PRIu32 ",\"n_rej\":%" PRIu32 ",\"n_rec\":%" PRIu32 "}",
                                p.x_mm, p.y_mm, p.th_deg, p.b_deg, p.sx_mm, p.sy_mm, p.sth_deg,
-                               p.spos_mm, p.src, p.n_head, p.n_sun, p.n_tag, p.n_rej);
+                               p.spos_mm, p.src, p.n_head, p.n_sun, p.n_tag, p.n_rej, p.n_rec);
     }
 }
 
@@ -377,9 +377,11 @@ static void pub_nav_sun(void)
     hub_nav_status(&st);
     flora_mqtt_publish_fmt("tele/nav_sun", 0, false,
                            "{\"utc_ok\":%s,\"gate\":%d,\"sun_vs_mag_deg\":%.1f,"
-                           "\"seen\":%" PRIu32 ",\"gated\":%" PRIu32 ",\"att_age_ms\":%" PRId32 "}",
+                           "\"seen\":%" PRIu32 ",\"gated\":%" PRIu32 ",\"att_age_ms\":%" PRId32
+                           ",\"gyro_ok\":%s,\"gyro_vs_odo_dps\":%.2f}",
                            st.time_ok ? "true" : "false", st.sun_gate, st.sun_diff_deg,
-                           st.n_sun_seen, st.n_sun_gated, st.att_age_ms);
+                           st.n_sun_seen, st.n_sun_gated, st.att_age_ms,
+                           st.gyro_ok ? "true" : "false", st.gyro_vs_odo_dps);
 }
 
 static void pub_soil(void)

@@ -37,6 +37,13 @@ static const char *TAG = "nav";
 #define MAX_STEP_MM      100.0f   /**< 5 m/s - wiecej to skok licznika, nie ruch */
 #define TIME_VALID_UNIX  1735689600LL   /**< 2025-01-01: wczesniej zegar nie byl ustawiony */
 
+#define GYRO_MAX_AGE_US     150000   /**< rate_z starsze niz to nie opisuje biezacego taktu */
+#define STILL_EVERY_US      1000000  /**< odswiezenie flagi postoju dla glowicy */
+/** Podloga niepewnosci kursu z glowicy. Bledy magnetometru zaleza od
+ *  kierunku i sa skorelowane w czasie, a EKF bierze kolejne pomiary jako
+ *  niezalezne - bez podlogi P theta zeszloby ponizej realnej dokladnosci. */
+#define HEAD_SIGMA_FLOOR_DEG 4.0f
+
 #define SUN_MAG_MAX_AGE_US  2000000  /**< kurs glowicy starszy niz to nie jest odniesieniem */
 #define SUN_EVERY_US        5000000  /**< najwyzej jeden pomiar slonca na 5 s */
 
@@ -112,6 +119,13 @@ static struct {
     flora_sungate_result_t sun_gate;
     float    sun_diff_deg;
     uint32_t n_sun_seen, n_sun_gated;
+
+    /* ostatnie ATTITUDE: rate_z do oceny odometrii */
+    flora_attitude_t att;
+    int64_t  att_rx_us;
+    bool     have_att;
+    float    gyro_vs_odo_dps;   /**< wygladzona roznica obrotu kola - zyro */
+    bool     gyro_ok;
 } s_n = { .sun_gate = FLORA_SUNGATE_NONE, .att_age_ms = -1 };
 
 /** Pomiar kursu przygotowany dla wariantow w biezacym takcie. */
@@ -139,12 +153,12 @@ static bool time_ok(time_t *now)
     return (long long)*now > TIME_VALID_UNIX;
 }
 
-static heading_meas_t take_heading(int64_t now_us, uint32_t *seq, int64_t *last_us)
+/** @param fresh  nowa probka ATTITUDE w tym takcie (w s_n.att) */
+static heading_meas_t take_heading(int64_t now_us, bool fresh, int64_t *last_us)
 {
     heading_meas_t m = { 0 };
-    flora_attitude_t att;
-    if (!hub_links_get(FLORA_MSG_ATTITUDE, &att, sizeof att, seq) ||
-        !(att.flags & FLORA_ATT_HEADING_VALID)) {
+    const flora_attitude_t att = s_n.att;
+    if (!fresh || !(att.flags & FLORA_ATT_HEADING_VALID)) {
         return m;
     }
     float psi_deg = att.heading_cdeg / 100.0f;
@@ -178,6 +192,9 @@ static heading_meas_t take_heading(int64_t now_us, uint32_t *seq, int64_t *last_
      * tylko jako zapas, gdyby pole bylo zerem. */
     m.sigma = att.heading_sigma_cdeg > 0 ? D2R(att.heading_sigma_cdeg / 100.0f)
                                          : head_sigma_rad(att.quality);
+    if (m.sigma < D2R(HEAD_SIGMA_FLOOR_DEG)) {
+        m.sigma = D2R(HEAD_SIGMA_FLOOR_DEG);
+    }
     return m;
 }
 
@@ -257,6 +274,28 @@ static void apply_tags(variant_t *v, const flora_tags_t *msg)
     }
 }
 
+/** Flaga postoju dla glowicy (ZUPT): przy zmianie i co STILL_EVERY_US. */
+static void send_still(bool still, int64_t now_us)
+{
+    static bool    sent_still;
+    static int64_t sent_us;
+    static bool    sent_once;
+    if (sent_once && still == sent_still && now_us - sent_us < STILL_EVERY_US) {
+        return;
+    }
+    flora_link_handle_t h = hub_links_handle();
+    if (!h) {
+        return;
+    }
+    flora_cmd_t c = { .code = FLORA_CMD_SET_STILL, .arg = still ? 1 : 0 };
+    /* Bez potwierdzenia: nastepne odswiezenie przyjdzie za sekunde,
+     * a glowica sama gasi flage po 2 s ciszy. */
+    flora_link_send(h, FLORA_MSG_CMD, &c, sizeof c);
+    sent_still = still;
+    sent_us    = now_us;
+    sent_once  = true;
+}
+
 static void nav_task(void *arg)
 {
     TickType_t wake = xTaskGetTickCount();
@@ -298,8 +337,28 @@ static void nav_task(void *arg)
 
         xSemaphoreTake(s_n.lock, portMAX_DELAY);
 
+        /* ATTITUDE raz na takt: kurs (co 0,5 s) i rate_z (w kazdym takcie). */
+        flora_attitude_t att;
+        bool att_fresh = hub_links_get(FLORA_MSG_ATTITUDE, &att, sizeof att, &seq_att);
+        if (att_fresh) {
+            s_n.att       = att;
+            s_n.att_rx_us = now.timestamp_us;
+            s_n.have_att  = true;
+        }
+        /* Obrot z zyroskopu w ukladzie mapy: rate_z to tempo kursu
+         * kompasowego (CW), theta jest CCW - stad minus. */
+        s_n.gyro_ok = s_n.have_att &&
+                      (s_n.att.flags & FLORA_ATT_HEADING_VALID) &&
+                      now.timestamp_us - s_n.att_rx_us < GYRO_MAX_AGE_US;
+        float dth_gyro = s_n.gyro_ok ? -D2R(s_n.att.rate_z_cdps / 100.0f) * dt : 0.0f;
+        if (s_n.gyro_ok && dt > 0.0f) {
+            float dth_odo = (dr - dl) / FLORA_TRACK_MM;
+            float mis_dps = R2D(dth_odo - dth_gyro) / dt;
+            s_n.gyro_vs_odo_dps += 0.05f * (mis_dps - s_n.gyro_vs_odo_dps);   /* ~0,4 s */
+        }
+
         /* Pomiary raz na takt, wspolne dla wszystkich wariantow. */
-        heading_meas_t head = take_heading(now.timestamp_us, &seq_att, &last_head_us);
+        heading_meas_t head = take_heading(now.timestamp_us, att_fresh, &last_head_us);
         heading_meas_t sun  = take_sun(now.timestamp_us, &seq_sun, &last_sun_us);
         flora_tags_t tags;
         bool have_tags = hub_links_get(FLORA_MSG_TAGS, &tags, sizeof tags, &seq_tags) && still;
@@ -308,6 +367,10 @@ static void nav_task(void *arg)
             variant_t *v = &s_variants[i];
             if (v->src & HUB_NAV_SRC_ODOM) {
                 flora_ekf_predict_odom(&v->ekf, dl, dr, dt);
+                /* Zyroskop jest zrodlem glowicy - wariant "odom" zostaje czysty. */
+                if ((v->src & HUB_NAV_SRC_HEAD) && s_n.gyro_ok) {
+                    flora_ekf_observe_gyro(&v->ekf, dth_gyro);
+                }
             } else {
                 flora_ekf_predict_static(&v->ekf, dt, STATIC_Q_XY, STATIC_Q_TH);
             }
@@ -324,6 +387,8 @@ static void nav_task(void *arg)
             }
         }
         xSemaphoreGive(s_n.lock);
+
+        send_still(still, now.timestamp_us);
     }
 }
 
@@ -395,6 +460,7 @@ bool hub_nav_get(int variant, hub_nav_pose_t *out)
     out->n_sun   = v->n_sun;
     out->n_tag   = v->n_tag;
     out->n_rej   = e->n_rejected;
+    out->n_rec   = e->n_recovered;
     xSemaphoreGive(s_n.lock);
     return true;
 }
@@ -414,6 +480,8 @@ void hub_nav_status(hub_nav_status_t *out)
     out->n_sun_seen   = s_n.n_sun_seen;
     out->n_sun_gated  = s_n.n_sun_gated;
     out->att_age_ms   = s_n.att_age_ms;
+    out->gyro_ok      = s_n.gyro_ok;
+    out->gyro_vs_odo_dps = s_n.gyro_vs_odo_dps;
     xSemaphoreGive(s_n.lock);
 }
 
@@ -421,9 +489,10 @@ esp_err_t hub_nav_reset_pose(float x_mm, float y_mm, float th_deg)
 {
     ESP_RETURN_ON_FALSE(s_n.ready, ESP_ERR_INVALID_STATE, TAG, "filtr nie dziala");
     xSemaphoreTake(s_n.lock, portMAX_DELAY);
-    /* Mala, niezerowa niepewnosc: robot postawiony "na oko" w znanym miejscu. */
+    /* Mala, niezerowa niepewnosc: robot postawiony "na oko" w znanym miejscu.
+     * b liczone od nowa: nowe theta ze starym b dawaloby kurs poza bramka. */
     for (int i = 0; i < VARIANTS; i++) {
-        flora_ekf_set_pose(&s_variants[i].ekf, x_mm, y_mm, D2R(th_deg), 20.0f, D2R(2.0f));
+        flora_ekf_set_pose(&s_variants[i].ekf, x_mm, y_mm, D2R(th_deg), 20.0f, D2R(2.0f), true);
     }
     flora_sungate_reset(&s_n.gate);   /* stare pomiary slonca liczone przy innym theta */
     xSemaphoreGive(s_n.lock);

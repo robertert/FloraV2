@@ -55,6 +55,19 @@ typedef struct {
     float q_b;        /**< bladzenie b [rad^2/s] - zaklocenia magnetyczne */
     float gate_1d;    /**< prog chi^2 dla pomiaru 1D (6.63 = 99%) */
     float gate_2d;    /**< prog chi^2 dla pomiaru 2D (9.21 = 99%) */
+    /**
+     * Wyjscie z blokady bramki kursu: po tylu odrzuceniach kursu Z RZEDU
+     * niepewnosc theta rosnie o kwadrat innowacji i pomiar jest przyjmowany.
+     * Poslizg kola to blad systematyczny - P theta rosnie wtedy wolniej niz
+     * prawdziwy blad i bez tego kompas bylby odrzucany na zawsze. 0 = wylaczone.
+     */
+    uint16_t heading_recover_n;
+    /**
+     * Martwa strefa niezgodnosci obrotu kola vs zyroskop [rad], liczonej
+     * od ostatniego przyjetego kursu (flora_ekf_observe_gyro). Pokrywa
+     * opoznienie ATTITUDE na poczatku i koncu skretu oraz resztkowy dryf.
+     */
+    float gyro_deadband_rad;
 } flora_ekf_cfg_t;
 
 #define FLORA_EKF_DEFAULT_CFG()      \
@@ -65,6 +78,8 @@ typedef struct {
         .q_b      = 3e-6f,           \
         .gate_1d  = 6.63f,           \
         .gate_2d  = 9.21f,           \
+        .heading_recover_n = 10,     \
+        .gyro_deadband_rad = 0.035f, \
     }
 
 typedef struct {
@@ -75,6 +90,13 @@ typedef struct {
     uint32_t n_heading;   /**< przyjete pomiary kursu */
     uint32_t n_tag;       /**< przyjete pomiary znacznikow */
     uint32_t n_rejected;  /**< odrzucone przez bramke */
+    uint32_t n_recovered; /**< wyjscia z blokady kursu (heading_recover_n) */
+    uint16_t heading_reject_run;  /**< odrzucenia kursu z rzedu */
+
+    /* niezgodnosc kola vs zyroskop od ostatniego przyjetego kursu */
+    float    last_dth;      /**< obrot z odometrii w ostatniej predykcji [rad] */
+    float    gyro_mis;      /**< suma (obrot kol - obrot zyro) [rad] */
+    float    gyro_applied;  /**< wariancja juz dodana do P theta z tego tytulu */
 } flora_ekf_t;
 
 /**
@@ -86,10 +108,15 @@ void flora_ekf_init(flora_ekf_t *ekf, const flora_ekf_cfg_t *cfg);
 
 /**
  * Ustawia pozycje i kat (np. robot postawiony w znanym miejscu).
- * Nie rusza b ani jego niepewnosci; zeruje korelacje z b.
+ * Zeruje korelacje z b; wartosc b zostaje.
+ *
+ * @param forget_b  true: niepewnosc b wraca do pi. Potrzebne, gdy nowe theta
+ *                  nie zgadza sie ze starym b (b = psi + theta) - inaczej
+ *                  kazdy pomiar kursu wypada poza bramka. Pierwszy pomiar
+ *                  kursu po resecie ustawia wtedy b od nowa.
  */
 void flora_ekf_set_pose(flora_ekf_t *ekf, float x_mm, float y_mm, float th_rad,
-                        float sigma_xy_mm, float sigma_th_rad);
+                        float sigma_xy_mm, float sigma_th_rad, bool forget_b);
 
 /**
  * Krok predykcji z odometrii.
@@ -111,6 +138,21 @@ void flora_ekf_predict_odom(flora_ekf_t *ekf, float ds_l, float ds_r, float dt_s
  * @param q_th  przyrost wariancji kata [rad^2/s]
  */
 void flora_ekf_predict_static(flora_ekf_t *ekf, float dt_s, float q_xy, float q_th);
+
+/**
+ * Obrot z zyroskopu w tym samym kroku co ostatnie predict_odom.
+ *
+ * Nie poprawia theta, tylko ocenia odometrie: kola moga sie slizgac,
+ * zyroskop nie. Gdy suma (obrot kol - obrot zyro) od ostatniego przyjetego
+ * kursu wyjdzie poza martwa strefe, P theta rosnie o jej kwadrat - blad
+ * systematyczny (poslizg w skrecie) dostaje wtedy realna niepewnosc
+ * i najblizszy pomiar kursu przechodzi bramke od razu, bez czekania
+ * na heading_recover_n.
+ *
+ * @param dth_gyro_rad  obrot w ukladzie mapy (CCW dodatni), czyli MINUS
+ *                      przyrost kursu kompasowego z glowicy
+ */
+void flora_ekf_observe_gyro(flora_ekf_t *ekf, float dth_gyro_rad);
 
 /**
  * Pomiar kursu kompasowego (glowica albo slonce).

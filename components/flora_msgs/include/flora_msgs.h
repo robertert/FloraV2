@@ -114,8 +114,8 @@ typedef struct __attribute__((packed)) {
  */
 typedef struct __attribute__((packed)) {
     uint32_t timestamp_us;   /**< zegar glowicy w chwili odczytu IMU */
-    uint16_t heading_cdeg;   /**< kurs, centystopnie, 0..35999 */
-    int16_t  rate_z_cdps;    /**< predkosc katowa wokol pionu, centy-dps (+-327 dps) */
+    uint16_t heading_cdeg;   /**< kurs kompasowy, CW od polnocy magnetycznej, centystopnie, 0..35999 */
+    int16_t  rate_z_cdps;    /**< tempo zmiany kursu (dodatnie CW, w prawo), centy-dps (+-327 dps) */
     int16_t  pitch_cdeg;     /**< pochylenie, centystopnie */
     int16_t  roll_cdeg;      /**< przechyl, centystopnie */
     uint8_t  quality;        /**< 0..100, pewnosc kursu (zgodnosc wstecz; liczone z sigma) */
@@ -286,6 +286,11 @@ typedef enum {
      *  srednia z dwoch oddziela przekrzywienie plytki od pochylosci podloza.
      *  Wynik: FLORA_MSG_LEVEL_CAL_RESULT. */
     FLORA_CMD_CALIBRATE_LEVEL = 0x06,
+    /** Robot stoi wg enkoderow: arg 1 = stoi, 0 = jedzie. Bryla wysyla przy
+     *  zmianie i co 1 s; glowica uznaje flage za niewazna po 2 s ciszy.
+     *  Na postoju glowica estymuje dryf zyroskopu wprost (ZUPT). Nowy kod
+     *  w istniejacej strukturze - bez zmiany FLORA_MSGS_VERSION. */
+    FLORA_CMD_SET_STILL       = 0x07,
 } flora_cmd_code_t;
 
 typedef struct __attribute__((packed)) {

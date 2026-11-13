@@ -15,9 +15,17 @@
  *
  * ================= ZRODLA =================
  *   enkodery      predykcja co 20 ms (bez nich: model "stoi w miejscu")
+ *   rate_z        zyroskop glowicy (z ATTITUDE, 20 Hz) - nie zmienia theta,
+ *                 ale niezgodnosc z obrotem kol poszerza niepewnosc theta
+ *                 (flora_ekf_observe_gyro). Tylko warianty z ODOM i HEAD.
+ *                 Bryla wysyla tez glowicy flage postoju (FLORA_CMD_SET_STILL)
+ *                 do estymacji dryfu zyroskopu na postoju.
  *   ATTITUDE      kurs z glowicy (magnetometr + zyro) co 500 ms - GLOWNE
  *                 zrodlo kursu. Rzadziej niz 20 Hz celowo: to wyjscie filtra
- *                 komplementarnego (tau 4 s), kolejne probki sa skorelowane.
+ *                 Kalmana glowicy (flora_hkf), kolejne probki sa skorelowane.
+ *                 Kurs uparcie niezgodny z odometria (10 odrzucen z rzedu,
+ *                 np. po poslizgu) poszerza niepewnosc theta i wraca do filtra
+ *                 (heading_recover_n w flora_ekf.h).
  *   SUN           kompas sloneczny - POMOCNICZY, patrz bramki nizej
  *   TAGS          tylko na postoju (D-034), znaczniki z mapy palikow
  *
@@ -53,6 +61,7 @@ typedef struct {
     float    sx_mm, sy_mm, sth_deg;
     float    spos_mm;    /**< najwieksze odchylenie pozycji - sygnal "szukaj znacznikow" */
     uint32_t n_head, n_sun, n_tag, n_rej;
+    uint32_t n_rec;      /**< wyjscia z blokady kursu (po poslizgu) */
 } hub_nav_pose_t;
 
 /** Stan wspolny dla wszystkich wariantow. */
@@ -63,6 +72,11 @@ typedef struct {
     uint32_t n_sun_seen;   /**< pomiary slonca z valid=1 */
     uint32_t n_sun_gated;  /**< odrzucone przez bramki 1-4 */
     int32_t  att_age_ms;   /**< wiek probki kursu z glowicy; -1 bez TIME_SYNC */
+    bool     gyro_ok;      /**< swieze rate_z z glowicy w ostatnim takcie */
+    /** Wygladzona roznica obrotu z kol i z zyroskopu [st/s]. Trwale != 0
+     *  w skrecie = poslizg; na prostej = rozne promienie kol albo zle
+     *  FLORA_TRACK_MM. Baza dla straznika "zyro vs odometria" z TODO.md. */
+    float    gyro_vs_odo_dps;
 } hub_nav_status_t;
 
 /** Startuje filtry. Wymaga zainicjalizowanych enkoderow i hub_links. */

@@ -37,13 +37,15 @@ void flora_ekf_init(flora_ekf_t *ekf, const flora_ekf_cfg_t *cfg)
 }
 
 void flora_ekf_set_pose(flora_ekf_t *ekf, float x_mm, float y_mm, float th_rad,
-                        float sigma_xy_mm, float sigma_th_rad)
+                        float sigma_xy_mm, float sigma_th_rad, bool forget_b)
 {
     ekf->x[FLORA_EKF_X]  = x_mm;
     ekf->x[FLORA_EKF_Y]  = y_mm;
     ekf->x[FLORA_EKF_TH] = flora_ekf_wrap(th_rad);
+    ekf->heading_reject_run = 0;
+    ekf->gyro_mis = ekf->gyro_applied = 0.0f;
 
-    float pbb = ekf->P[FLORA_EKF_B][FLORA_EKF_B];
+    float pbb = forget_b ? (float)(M_PI * M_PI) : ekf->P[FLORA_EKF_B][FLORA_EKF_B];
     memset(ekf->P, 0, sizeof(ekf->P));
     ekf->P[FLORA_EKF_X][FLORA_EKF_X]   = sigma_xy_mm * sigma_xy_mm;
     ekf->P[FLORA_EKF_Y][FLORA_EKF_Y]   = sigma_xy_mm * sigma_xy_mm;
@@ -63,6 +65,7 @@ void flora_ekf_predict_odom(flora_ekf_t *ekf, float ds_l, float ds_r, float dt_s
     ekf->x[FLORA_EKF_X]  += ds * c;
     ekf->x[FLORA_EKF_Y]  += ds * s;
     ekf->x[FLORA_EKF_TH]  = flora_ekf_wrap(th + dth);
+    ekf->last_dth = dth;
 
     /* F = df/dx: tylko pozycja zalezy od kata. */
     float F[N][N] = {
@@ -106,6 +109,7 @@ void flora_ekf_predict_odom(flora_ekf_t *ekf, float ds_l, float ds_r, float dt_s
 
 void flora_ekf_predict_static(flora_ekf_t *ekf, float dt_s, float q_xy, float q_th)
 {
+    ekf->last_dth = 0.0f;
     if (dt_s <= 0.0f) {
         return;
     }
@@ -212,8 +216,40 @@ bool flora_ekf_update_heading(flora_ekf_t *ekf, float psi_rad, float sigma_rad)
     const float H[1][N] = { { 0.0f, 0.0f, -1.0f, 1.0f } };
     const float R[1][2] = { { sigma_rad * sigma_rad, 0.0f } };
     bool ok = kf_update(ekf, 1, y, H, R, ekf->cfg.gate_1d);
-    if (ok) ekf->n_heading++;
+
+    /* Wyjscie z blokady: kurs uparcie mowi co innego niz odometria, wiec
+     * to theta jest niepewne bardziej, niz filtr sadzi (poslizg, uderzenie).
+     * Po powiekszeniu P innowacja miesci sie w 1 sigma i bramka przepuszcza. */
+    if (!ok && ekf->cfg.heading_recover_n &&
+        ++ekf->heading_reject_run >= ekf->cfg.heading_recover_n) {
+        ekf->P[FLORA_EKF_TH][FLORA_EKF_TH] += y[0] * y[0];
+        ekf->heading_reject_run = 0;
+        ekf->n_recovered++;
+        ok = kf_update(ekf, 1, y, H, R, ekf->cfg.gate_1d);
+    }
+    if (ok) {
+        ekf->n_heading++;
+        ekf->heading_reject_run = 0;
+        /* Kurs bezwzgledny wlasnie poprawil theta - niezgodnosc liczymy od nowa. */
+        ekf->gyro_mis = ekf->gyro_applied = 0.0f;
+    }
     return ok;
+}
+
+void flora_ekf_observe_gyro(flora_ekf_t *ekf, float dth_gyro_rad)
+{
+    ekf->gyro_mis += ekf->last_dth - dth_gyro_rad;
+    float excess = fabsf(ekf->gyro_mis) - ekf->cfg.gyro_deadband_rad;
+    if (excess <= 0.0f) {
+        return;
+    }
+    /* Dokladamy tylko przyrost: laczna dodana wariancja = excess^2,
+     * czyli tyle, ile wynosi kwadrat bledu systematycznego. */
+    float var = excess * excess;
+    if (var > ekf->gyro_applied) {
+        ekf->P[FLORA_EKF_TH][FLORA_EKF_TH] += var - ekf->gyro_applied;
+        ekf->gyro_applied = var;
+    }
 }
 
 bool flora_ekf_update_tag(flora_ekf_t *ekf, float tag_x_mm, float tag_y_mm,
