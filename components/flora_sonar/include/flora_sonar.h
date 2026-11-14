@@ -72,9 +72,24 @@ esp_err_t flora_sonar_deinit(void);
  *
  * @return ESP_ERR_TIMEOUT gdy nie wrocilo echo (brak przeszkody w zasiegu
  *         albo urwany przewod), ESP_ERR_INVALID_RESPONSE gdy wynik wypadl
- *         poza granicami wiarygodnosci.
+ *         poza granicami wiarygodnosci, ESP_ERR_INVALID_STATE gdy ECHO bylo
+ *         wciaz zajete poprzednim strzalem.
  */
 esp_err_t flora_sonar_measure(int index, float *distance_mm);
+
+/**
+ * @brief Wszystkie czujniki jednym strzalem (wspolny TRIG i tak odpala
+ *        wszystkie naraz) - czas jednego pomiaru zamiast sumy.
+ *
+ * @param distance_mm tablica cfg.count wynikow, FLORA_SONAR_INVALID przy bledzie
+ * @param result      tablica cfg.count kodow, jak z flora_sonar_measure, oraz
+ *                    ESP_ERR_INVALID_STATE gdy ECHO bylo wciaz zajete przed
+ *                    strzalem (czujnik nie przyjal nowego)
+ */
+esp_err_t flora_sonar_measure_all(float *distance_mm, esp_err_t *result);
+
+/** Liczba czujnikow z konfiguracji; 0 przed init. */
+int flora_sonar_count(void);
 
 /**
  * @brief Mediana z kilku pomiarow.

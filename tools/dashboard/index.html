@@ -739,7 +739,9 @@ const SONAR_ST = {
   echo:  ["brak echa", "bad"],
   range: ["za blisko / za daleko", "warn"],
   err:   ["blad", "bad"],
+  busy:  ["zajety (poprzedni strzal)", "warn"],
   off:   ["nie mierzony", ""],
+  nodata: ["brak pola - stary firmware?", "bad"],
 };
 const SONAR_BAR_MM = 3000;       // pelny pasek = 3 m
 const SONAR_FLASH_MM = 80;       // skok, przy ktorym kafelek miga
@@ -747,7 +749,10 @@ const sonarHist = { a: [], b: [], c: [] };
 const sonarFlashT = {};
 function sonarView(d) {
   for (const k of ["a", "b", "c"]) {
-    const mm = d["mm_" + k], st = d["st_" + k] || (mm === null ? "echo" : "ok");
+    /* Bez pola statusu (stary firmware bryly wysylal samo "mm") nie
+     * udajemy "ok" - mowimy wprost, ze danych dla tego czujnika nie ma. */
+    const mm = d["mm_" + k];
+    const st = d["st_" + k] ?? (typeof mm === "number" ? "ok" : mm === null ? "echo" : "nodata");
     const [label, cls] = SONAR_ST[st] || [st, "bad"];
     const pill = $("sonar-" + k + "-st");
     pill.textContent = label;

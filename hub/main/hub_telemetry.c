@@ -422,32 +422,51 @@ esp_err_t hub_telemetry_sonar_select(const char *arg)
     return ESP_ERR_INVALID_ARG;
 }
 
+static const char *sonar_status(esp_err_t err)
+{
+    switch (err) {
+    case ESP_OK:                   return "ok";
+    case ESP_ERR_TIMEOUT:          return "echo";
+    case ESP_ERR_INVALID_RESPONSE: return "range";
+    case ESP_ERR_INVALID_STATE:    return "busy";
+    default:                       return "err";
+    }
+}
+
 static void pub_sonar(void)
 {
-    /* Wspolny TRIG, wiec kazdy pomiar strzela wszystkimi czujnikami naraz,
-     * a czytamy jedno echo; odstep settle_ms w sterowniku rozdziela strzaly.
-     * Trzy pomiary to ~200-300 ms - przy publikacji co 500 ms sie miesci.
+    /* Wspolny TRIG odpala wszystkie czujniki naraz, wiec w trybie "all"
+     * jeden strzal daje trzy wyniki. W tescie jednego czujnika mierzymy
+     * tylko jego (pozostale i tak strzelaja, ale ich nie czytamy).
      *
-     * Status osobno, bo przy tescie "brak echa" (nic przed czujnikiem albo
-     * martwy czujnik) i "poza zakresem" (za blisko, ponizej strefy martwej)
-     * znacza co innego: ok | echo | range | err | off (niemierzony). */
+     * Status osobno, bo przy tescie znacza co innego: ok | echo (brak echa:
+     * nic przed czujnikiem albo martwy czujnik) | range (poza zakresem, np.
+     * za blisko) | busy (ECHO wciaz zajete poprzednim strzalem) | err |
+     * off (niemierzony). */
     const int sel = s_sonar_sel;
+    float mm[3] = { NAN, NAN, NAN };
+    esp_err_t res[3] = { ESP_FAIL, ESP_FAIL, ESP_FAIL };
+    if (sel < 0) {
+        float all[FLORA_SONAR_MAX_SENSORS];
+        esp_err_t r[FLORA_SONAR_MAX_SENSORS];
+        if (flora_sonar_measure_all(all, r) == ESP_OK) {
+            for (int i = 0; i < 3; i++) {
+                mm[i] = all[i];
+                res[i] = r[i];
+            }
+        }
+    } else {
+        res[sel] = flora_sonar_measure(sel, &mm[sel]);
+    }
+
     char b[3][16];
     const char *st[3];
     for (int i = 0; i < 3; i++) {
-        float mm = NAN;
-        if (sel >= 0 && sel != i) {
-            st[i] = "off";
-        } else {
-            esp_err_t err = flora_sonar_measure(i, &mm);
-            st[i] = err == ESP_OK                   ? "ok"
-                  : err == ESP_ERR_TIMEOUT          ? "echo"
-                  : err == ESP_ERR_INVALID_RESPONSE ? "range" : "err";
-            if (err != ESP_OK || mm == FLORA_SONAR_INVALID) {
-                mm = NAN;
-            }
+        st[i] = (sel >= 0 && sel != i) ? "off" : sonar_status(res[i]);
+        if (res[i] != ESP_OK || mm[i] == FLORA_SONAR_INVALID) {
+            mm[i] = NAN;
         }
-        num(b[i], sizeof b[i], mm, 0);
+        num(b[i], sizeof b[i], mm[i], 0);
     }
     /* Predkosc dzwieku wprost w telemetrii - widac, czy korekta
      * temperatury dziala (343 m/s przy 20 st C, 331 przy 0). */

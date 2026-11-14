@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,8 +41,13 @@ static void IRAM_ATTR echo_isr(void *arg)
     int64_t now = esp_timer_get_time();
 
     if (gpio_get_level(e->gpio)) {
-        e->rise_us = now;
-    } else {
+        if (e->fall_us == 0) {
+            e->rise_us = now;
+        }
+    } else if (e->rise_us != 0 && e->fall_us == 0) {
+        /* Tylko zbocze opadajace PO naszym narastajacym. Osierocone (koniec
+         * impulsu, ktory zaczal sie przed strzalem - np. echo poprzedniego
+         * strzalu przy wspolnym TRIG) ignorujemy, zamiast budzic pomiar. */
         e->fall_us = now;
         BaseType_t woken = pdFALSE;
         xSemaphoreGiveFromISR(e->done, &woken);
@@ -155,45 +161,75 @@ esp_err_t flora_sonar_deinit(void)
     return ESP_OK;
 }
 
-esp_err_t flora_sonar_measure(int index, float *distance_mm)
+/* Czujnik bez echa potrafi trzymac ECHO wysoko dluzej niz settle_ms
+ * (zalezy od modelu). Strzal w tym czasie czujnik zignoruje, a my
+ * dostalibysmy koniec starego impulsu - czekamy wiec, az linie opadna. */
+#define BUSY_WAIT_MS 150
+
+static bool echo_busy(int i)
 {
-    ESP_RETURN_ON_FALSE(s_n.initialized, ESP_ERR_INVALID_STATE, TAG, "nie zainicjalizowano");
-    ESP_RETURN_ON_FALSE(distance_mm, ESP_ERR_INVALID_ARG, TAG, "distance_mm == NULL");
-    ESP_RETURN_ON_FALSE(index >= 0 && index < s_n.cfg.count, ESP_ERR_INVALID_ARG, TAG,
-                        "indeks %d poza zakresem", index);
+    return gpio_get_level(s_n.echo[i].gpio) != 0;
+}
 
-    *distance_mm = FLORA_SONAR_INVALID;
-    echo_t *e = &s_n.echo[index];
-
-    /* Odstep miedzy pomiarami: bez niego echo z poprzedniego strzalu
-     * potrafi wrocic w trakcie nastepnego i dac absurdalnie bliski wynik. */
+/** Odstep od poprzedniego strzalu i czekanie na opadniecie linii ECHO. */
+static void prepare_shot(void)
+{
     int64_t since_ms = (esp_timer_get_time() - s_n.last_measure_us) / 1000;
     if (since_ms < (int64_t)s_n.cfg.settle_ms) {
         vTaskDelay(pdMS_TO_TICKS(s_n.cfg.settle_ms - since_ms));
     }
+    for (int t = 0; t < BUSY_WAIT_MS; t += 5) {
+        bool any = false;
+        for (int i = 0; i < s_n.cfg.count; i++) {
+            any |= echo_busy(i);
+        }
+        if (!any) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    for (int i = 0; i < s_n.cfg.count; i++) {
+        xSemaphoreTake(s_n.echo[i].done, 0);   /* kasujemy sygnal po poprzednim pomiarze */
+        s_n.echo[i].rise_us = 0;
+        s_n.echo[i].fall_us = 0;
+    }
+}
 
-    xSemaphoreTake(e->done, 0);   /* kasujemy sygnal po poprzednim pomiarze */
-    e->rise_us = 0;
-    e->fall_us = 0;
-
-    /* Impuls wyzwalajacy: 10 us stanu wysokiego wg noty katalogowej. */
+/** Impuls wyzwalajacy: 10 us stanu wysokiego wg noty katalogowej. */
+static void fire(void)
+{
     gpio_set_level(s_n.cfg.trig_gpio, 0);
     esp_rom_delay_us(4);
     gpio_set_level(s_n.cfg.trig_gpio, 1);
     esp_rom_delay_us(10);
     gpio_set_level(s_n.cfg.trig_gpio, 0);
-
     s_n.last_measure_us = esp_timer_get_time();
+}
 
-    if (xSemaphoreTake(e->done, pdMS_TO_TICKS(s_n.cfg.timeout_ms)) != pdTRUE) {
+/** Czeka na echo czujnika i do deadline_us i przelicza na mm. */
+static esp_err_t collect(int index, bool was_busy, int64_t deadline_us, float *distance_mm)
+{
+    *distance_mm = FLORA_SONAR_INVALID;
+    echo_t *e = &s_n.echo[index];
+    if (was_busy) {
+        /* Linia wciaz wysoko z poprzedniego strzalu - czujnik nie przyjal
+         * nowego, wynik bylby stary albo zaden. */
+        ESP_LOGD(TAG, "[%d] ECHO wciaz zajete przed strzalem", index);
+        return ESP_ERR_INVALID_STATE;
+    }
+    int64_t left_us = deadline_us - esp_timer_get_time();
+    TickType_t wait = left_us > 0 ? pdMS_TO_TICKS((left_us + 999) / 1000) : 0;
+    if (xSemaphoreTake(e->done, wait) != pdTRUE) {
         ESP_LOGD(TAG, "[%d] brak echa w %" PRIu32 " ms", index, s_n.cfg.timeout_ms);
         return ESP_ERR_TIMEOUT;
     }
 
     int64_t rise = e->rise_us;
     int64_t fall = e->fall_us;
-    ESP_RETURN_ON_FALSE(rise > 0 && fall > rise, ESP_ERR_INVALID_RESPONSE, TAG,
-                        "[%d] niespojne znaczniki czasu echa", index);
+    if (!(rise > 0 && fall > rise)) {
+        ESP_LOGD(TAG, "[%d] niespojne znaczniki czasu echa", index);
+        return ESP_ERR_INVALID_RESPONSE;
+    }
 
     float pulse_us = (float)(fall - rise);
     float mm = pulse_us * flora_sonar_speed_of_sound() / 2000.0f;
@@ -205,6 +241,45 @@ esp_err_t flora_sonar_measure(int index, float *distance_mm)
 
     *distance_mm = mm;
     return ESP_OK;
+}
+
+esp_err_t flora_sonar_measure(int index, float *distance_mm)
+{
+    ESP_RETURN_ON_FALSE(s_n.initialized, ESP_ERR_INVALID_STATE, TAG, "nie zainicjalizowano");
+    ESP_RETURN_ON_FALSE(distance_mm, ESP_ERR_INVALID_ARG, TAG, "distance_mm == NULL");
+    ESP_RETURN_ON_FALSE(index >= 0 && index < s_n.cfg.count, ESP_ERR_INVALID_ARG, TAG,
+                        "indeks %d poza zakresem", index);
+
+    prepare_shot();
+    bool busy = echo_busy(index);
+    fire();
+    int64_t deadline = s_n.last_measure_us + (int64_t)s_n.cfg.timeout_ms * 1000;
+    return collect(index, busy, deadline, distance_mm);
+}
+
+esp_err_t flora_sonar_measure_all(float *distance_mm, esp_err_t *result)
+{
+    ESP_RETURN_ON_FALSE(s_n.initialized, ESP_ERR_INVALID_STATE, TAG, "nie zainicjalizowano");
+    ESP_RETURN_ON_FALSE(distance_mm && result, ESP_ERR_INVALID_ARG, TAG, "NULL");
+
+    prepare_shot();
+    bool busy[FLORA_SONAR_MAX_SENSORS];
+    for (int i = 0; i < s_n.cfg.count; i++) {
+        busy[i] = echo_busy(i);
+    }
+    fire();
+    /* Wszystkie echa biegna rownolegle, wspolny termin - calosc trwa tyle
+     * co jeden pomiar, a nie suma. */
+    int64_t deadline = s_n.last_measure_us + (int64_t)s_n.cfg.timeout_ms * 1000;
+    for (int i = 0; i < s_n.cfg.count; i++) {
+        result[i] = collect(i, busy[i], deadline, &distance_mm[i]);
+    }
+    return ESP_OK;
+}
+
+int flora_sonar_count(void)
+{
+    return s_n.initialized ? s_n.cfg.count : 0;
 }
 
 static int cmp_float(const void *a, const void *b)
