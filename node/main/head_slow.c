@@ -306,6 +306,18 @@ static void do_status(void)
              head_fusion_heading(),
              head_fusion_state_name(head_fusion_state()),
              m.sensors_ok, m.error_count);
+
+    /* Lacze w dol widziane od strony glowicy. Idzie przez MQTT glowicy,
+     * nie przez UART, wiec da sie porownac z head/link bryly: ile ramek
+     * glowica wyslala, a ile bryla odebrala poprawnie. */
+    flora_link_stats_t ls;
+    flora_link_get_stats(s_s.cfg.down, &ls);
+    ESP_LOGI(TAG, "lacze dol: %s | wyslane %" PRIu32 " odebrane %" PRIu32
+                  " bajty %" PRIu32 " | crc %" PRIu32 " dl %" PRIu32 " wer %" PRIu32
+                  " typ %" PRIu32 " flagi %" PRIu32 " przepeln %" PRIu32,
+             flora_link_is_up(s_s.cfg.down) ? "up" : "DOWN",
+             ls.frames_sent, ls.frames_ok, ls.bytes_rx, ls.err_crc, ls.err_length,
+             ls.err_version, ls.err_type, ls.err_flags, ls.uart_overflow);
 }
 
 /* ================= PETLA ================= */
