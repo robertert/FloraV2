@@ -171,6 +171,12 @@ sobie domyslne haslo WiFi, wiec nie moze byc publiczna.
 Co jest na serwerze: `ls /opt/flora/tools/server/data/ota/hub/`,
 najnowsza: `cat .../latest.json`.
 
+Glowica ma to samo pod wlasna nazwa: tag `head-v1.2.0` ->
+`.github/workflows/head.yml` -> `ssh deploy@VPS "ota head-v1.2.0"` ->
+`data/ota/head/`, pobierane spod `/ota/head/` (ten sam login `robot1`),
+komenda `headcmd/ota`. Glowica laczy sie z brokerem jako ten sam uzytkownik
+`robot1` z innym identyfikatorem klienta, wiec ACL i hasla bez zmian.
+
 **Jednorazowo po zmianie flora-deploy** (CI celowo go nie aktualizuje, bo
 dziala jako root):
 ```sh

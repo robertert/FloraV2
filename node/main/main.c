@@ -24,6 +24,8 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "driver/i2c_master.h"
+#include "driver/gpio.h"
+#include "esp_rom_sys.h"
 
 #include "bringup_cam.h"
 #include "bringup_head.h"
@@ -31,6 +33,7 @@
 #include "head_cmd.h"
 #include "head_fusion.h"
 #include "head_links.h"
+#include "head_net.h"
 #include "head_obstacles.h"
 #include "head_slow.h"
 
@@ -50,8 +53,56 @@ static i2c_master_bus_handle_t s_bus;
 static flora_i2cmux_port_t     s_sun_port[FLORA_HEAD_SUN_COUNT];
 static flora_veml7700_handle_t s_sun[FLORA_HEAD_SUN_COUNT];
 
+/* Stan linii przed startem sterownika I2C. Timeout na kazdym adresie
+ * znaczy, ze ktoras linia wisi nisko - tu widac ktora. Niski SDA przy
+ * wysokim SCL to zwykle uklad zawieszony w polowie transakcji (ESP sie
+ * zresetowal, czujnik nie), wiec probujemy standardowego odblokowania:
+ * 9 impulsow zegara i STOP. */
+static void bus_line_check(void)
+{
+    const gpio_num_t sda = FLORA_HEAD_I2C_SDA, scl = FLORA_HEAD_I2C_SCL;
+    gpio_config_t in = {
+        .pin_bit_mask = (1ULL << sda) | (1ULL << scl),
+        .mode         = GPIO_MODE_INPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
+    };
+    gpio_config(&in);
+    esp_rom_delay_us(100);
+    int l_sda = gpio_get_level(sda), l_scl = gpio_get_level(scl);
+    ESP_LOGI(TAG, "linie I2C w spoczynku: SDA(%d)=%d SCL(%d)=%d (oczekiwane 1/1)",
+             sda, l_sda, scl, l_scl);
+
+    if (l_scl == 0) {
+        ESP_LOGE(TAG, "  SCL trzymany nisko - zwarcie do masy albo niezasilony uklad;"
+                      " odblokowanie zegarem niemozliwe");
+    } else if (l_sda == 0) {
+        ESP_LOGW(TAG, "  SDA trzymany nisko - probuje 9 impulsow SCL");
+        gpio_set_direction(scl, GPIO_MODE_INPUT_OUTPUT_OD);
+        for (int i = 0; i < 9 && gpio_get_level(sda) == 0; i++) {
+            gpio_set_level(scl, 0);
+            esp_rom_delay_us(10);
+            gpio_set_level(scl, 1);
+            esp_rom_delay_us(10);
+        }
+        /* STOP: SDA w gore przy wysokim SCL */
+        gpio_set_direction(sda, GPIO_MODE_INPUT_OUTPUT_OD);
+        gpio_set_level(sda, 0);
+        esp_rom_delay_us(10);
+        gpio_set_level(sda, 1);
+        esp_rom_delay_us(10);
+        gpio_set_direction(sda, GPIO_MODE_INPUT);
+        gpio_set_direction(scl, GPIO_MODE_INPUT);
+        ESP_LOGW(TAG, "  po odblokowaniu: SDA=%d SCL=%d",
+                 gpio_get_level(sda), gpio_get_level(scl));
+    }
+    gpio_reset_pin(sda);
+    gpio_reset_pin(scl);
+}
+
 static esp_err_t bus_setup(void)
 {
+    bus_line_check();
+
     i2c_master_bus_config_t cfg = {
         .i2c_port          = I2C_NUM_0,
         .sda_io_num        = FLORA_HEAD_I2C_SDA,
@@ -132,11 +183,21 @@ void app_main(void)
      * glowica nie musiala kalibrowac sie przy kazdym wybudzeniu - bryla
      * odcina jej zasilanie i nie da sie zagwarantowac bezruchu. */
     ESP_ERROR_CHECK(flora_store_init());
+    /* Zaraz po NVS: od tej chwili logi czekaja w kolejce na wyslanie przez
+     * MQTT (takze te z rozruchu czujnikow nizej), a wersja po OTA odlicza
+     * czas do potwierdzenia. */
+    head_net_early();
 
     esp_err_t err = bus_setup();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "magistrala I2C nie wystartowala: %s", esp_err_to_name(err));
         return;
+    }
+
+    /* Siec w tle, niezaleznie od reszty: brak WiFi nie zatrzymuje czujnikow,
+     * a zepsute lacze z bryla nie odcina logow. */
+    if (head_net_start() != ESP_OK) {
+        ESP_LOGW(TAG, "siec glowicy nie wystartowala");
     }
 
     /* Start w osobnym zadaniu, bo rozruch blokuje na kilka sekund,

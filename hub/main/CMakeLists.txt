@@ -4,5 +4,6 @@ idf_component_register(SRCS "main.c" "bringup_drive.c" "bringup_hydro.c" "bringu
                        REQUIRES flora_board flora_motors flora_encoders flora_pid flora_nav flora_ina226
                                 flora_pump flora_temp flora_soil flora_sonar
                                 flora_link flora_msgs flora_store flora_mqtt flora_wifi flora_pwrsw flora_level
+                                flora_net flora_diag flora_ota
                                 esp_driver_i2c esp_driver_gpio esp_timer esp_wifi esp_netif esp_app_format
                                 esp_https_ota esp_http_client app_update esp_partition mbedtls)

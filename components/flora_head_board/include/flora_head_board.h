@@ -110,6 +110,17 @@
 #define FLORA_HEAD_CAM_NET_DEFAULT 0
 
 /**
+ * Wlasne WiFi i MQTT glowicy (head_net.c): logi, info o starcie, komendy
+ * serwisowe i OTA, niezaleznie od UART-u w maszcie.
+ *
+ * 1 na czas uruchamiania i testow - bez tego glowice debuguje sie tylko
+ * kablem. Na prace w terenie mozna dac 0: radio to najwiekszy pojedynczy
+ * pobor na glowicy. Po wylaczeniu OTA glowicy tez nie dziala, wiec powrot
+ * do 1 wymaga kabla.
+ */
+#define FLORA_HEAD_NET_DEFAULT 1
+
+/**
  * Wysokosc obiektywu nad ziemia w milimetrach. ZERO znaczy "nie zmierzono".
  *
  * Bez tej liczby detektor przeszkod dziala, ale nie umie zamienic
@@ -199,6 +210,6 @@
  */
 #define FLORA_HEAD_SUN_CH_N     0
 #define FLORA_HEAD_SUN_CH_E     1
-#define FLORA_HEAD_SUN_CH_S     2
-#define FLORA_HEAD_SUN_CH_W     3
+#define FLORA_HEAD_SUN_CH_S     6   /**< kanaly 2 i 3 nieuzywane w montazu */
+#define FLORA_HEAD_SUN_CH_W     7
 #define FLORA_HEAD_SUN_COUNT    4

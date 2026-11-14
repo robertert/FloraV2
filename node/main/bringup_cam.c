@@ -184,8 +184,10 @@ static esp_err_t wifi_up(void)
     strncpy(cfg.password, pass, sizeof(cfg.password) - 1);
     cfg.on_state = on_wifi_state;
 
-    esp_err_t r = flora_wifi_init(&cfg);
-    /* Glowica moze miec WiFi podniesione przez inny test - to nie blad. */
+    /* Gdy glowica ma wlasna siec (head_net.c), WiFi podnosi i prowadzi ona -
+     * razem z lancuchem prob awaryjnych. Druga inicjalizacja z tego miejsca
+     * scigalaby sie z tamta, wiec tu tylko czekamy na adres. */
+    esp_err_t r = FLORA_HEAD_NET_DEFAULT ? ESP_ERR_INVALID_STATE : flora_wifi_init(&cfg);
     if (r != ESP_OK && r != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "  nie udalo sie podniesc WiFi: %s", esp_err_to_name(r));
         return r;

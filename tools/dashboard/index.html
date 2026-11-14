@@ -53,6 +53,8 @@
   #robotlog .E { color: var(--bad); }
   #robotlog .W { color: var(--warn); }
   #robotlog .I, #robotlog .D { color: var(--muted); }
+  /* Filtr zrodla logow: klasa na kontenerze chowa linie drugiej jednostki. */
+  #robotlog.only-bryla [data-src="glowica"], #robotlog.only-glowica [data-src="bryla"] { display: none; }
   .muted { color: var(--muted); }
   /* Dalmierze: trzy kafelki obok siebie, do testu po kolei. */
   .sonars { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
@@ -87,6 +89,7 @@
   </form>
   <span id="conn" class="pill bad">broker: rozlaczony</span>
   <span id="robot" class="pill bad">robot: ?</span>
+  <span id="headpill" class="pill bad" title="wlasne polaczenie glowicy z brokerem (headstatus)">glowica: ?</span>
   <span id="lastack" class="muted"></span>
 </header>
 
@@ -262,6 +265,37 @@
       Naped i pompka musza stac. Robot pobiera z serwera, restartuje sie, a nowa
       wersja potwierdza sie sama po minucie polaczenia - inaczej wraca stara.</p>
   </section>
+  <section class="card" data-topic="head/boot"><h2>Start glowicy <span class="age"></span></h2>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/ota"><h2>Glowica: serwis i OTA <span class="age"></span></h2>
+    <div class="kv"></div>
+    <progress id="hota-pct" max="100" value="0" style="width:100%;margin-top:6px" hidden></progress>
+    <div class="row"><button id="hota-latest">aktualizuj glowice do najnowszej</button></div>
+    <div class="row">
+      <input id="hota-ver" type="text" placeholder="head-v1.2.0" style="width:110px" autocomplete="off">
+      <button id="hota-ver-go">zainstaluj</button>
+    </div>
+    <div class="row">
+      <input id="hlog-val" type="text" placeholder="slow D" title="tag i poziom: &lt;tag|*&gt; &lt;E|W|I|D|V&gt;" style="width:110px" autocomplete="off">
+      <button id="hlog-set">poziom logow</button>
+    </div>
+    <div class="row">
+      <select id="hcfg-key">
+        <option value="mqtt_pass">mqtt_pass</option>
+        <option value="mqtt_uri">mqtt_uri</option>
+        <option value="mqtt_user">mqtt_user</option>
+        <option value="wifi_ssid">wifi_ssid</option>
+        <option value="wifi_pass">wifi_pass</option>
+      </select>
+      <input id="hcfg-val" type="text" style="width:120px">
+      <button id="hcfg-save">zapisz</button>
+    </div>
+    <div class="row"><button id="hreboot" class="danger">restart glowicy</button></div>
+    <p class="muted" style="margin:8px 0 0;font-size:12px">
+      Glowica ma wlasne WiFi i polaczenie z brokerem, niezalezne od lacza w maszcie
+      (komendy headcmd/...). Ustawienia sieci dzialaja po restarcie glowicy,
+      "-" kasuje. Wersje glowicy to tagi head-v...</p>
+  </section>
   <section class="card" data-topic="head/link"><h2>Lacze glowicy <span class="age"></span></h2>
     <div class="kv"></div></section>
   <section class="card" data-topic="head/attitude"><h2>Orientacja <span class="age"></span></h2>
@@ -303,8 +337,14 @@
   </section>
 
   <section class="card wide">
-    <h2>Logi robota <button id="robotlog-clear" style="font-size:11px;padding:1px 6px">wyczysc</button></h2>
-    <div id="robotlog" class="muted">brak - robot wysyla zawsze W i E, caly start po polaczeniu, a wiecej na zadanie: cmd/log "flora_sonar D"</div>
+    <h2>Logi robota
+      <select id="robotlog-src" style="font-size:11px" title="ktora jednostka">
+        <option value="">bryla + glowica</option>
+        <option value="bryla">tylko bryla</option>
+        <option value="glowica">tylko glowica</option>
+      </select>
+      <button id="robotlog-clear" style="font-size:11px;padding:1px 6px">wyczysc</button></h2>
+    <div id="robotlog" class="muted">brak - bryla i glowica wysylaja zawsze W i E, caly start po polaczeniu, a wiecej na zadanie: cmd/log "flora_sonar D", headcmd/log "slow D"</div>
   </section>
 
   <section class="card wide">
@@ -391,6 +431,12 @@ function send(cmd, payload) {
     client.publish(base + "/cmd/" + cmd, String(payload));
   }
 }
+/* Komendy do glowicy ida jej wlasnym polaczeniem z brokerem, nie przez bryle. */
+function sendHead(cmd, payload) {
+  if (client && client.connected) {
+    client.publish(base + "/headcmd/" + cmd, String(payload));
+  }
+}
 
 /* ---- odbior ---- */
 const lastSeen = {};   // temat wzgledny -> czas odbioru
@@ -406,12 +452,18 @@ function onMessage(topic, buf) {
     setPill("robot", text === "online", "robot: " + text);
     return;
   }
-  if (rel === "tele/log") {
-    try { robotLog(JSON.parse(text)); } catch (e) { /* uszkodzona linia - zostaje w surowym logu */ }
+  if (rel === "headstatus") {
+    setPill("headpill", text === "online", "glowica: " + text);
     return;
   }
-  if (rel.startsWith("ack/")) {
-    $("lastack").textContent = rel.slice(4) + ": " + text;
+  if (rel === "tele/log" || rel === "head/log") {
+    try { robotLog(JSON.parse(text), rel === "head/log" ? "glowica" : "bryla"); }
+    catch (e) { /* uszkodzona linia - zostaje w surowym logu */ }
+    return;
+  }
+  if (rel.startsWith("ack/") || rel.startsWith("headack/")) {
+    const head = rel.startsWith("headack/");
+    $("lastack").textContent = (head ? "glowica " + rel.slice(8) : rel.slice(4)) + ": " + text;
     $("lastack").style.color = text === "ok" ? "var(--ok)" : "var(--bad)";
     return;
   }
@@ -424,7 +476,8 @@ function onMessage(topic, buf) {
   const kv = card && card.querySelector(".kv");
   if (kv) { renderKv(kv, data); }
   if (rel === "tele/sonar") { sonarView(data); }
-  if (rel === "tele/ota") { otaProgress(data); }
+  if (rel === "tele/ota") { otaProgress(data, "ota-pct"); }
+  if (rel === "head/ota") { otaProgress(data, "hota-pct"); }
   if (rel === "config_drive") { pidConfig(data); }
 
   for (const [k, v] of Object.entries(data)) {
@@ -467,18 +520,24 @@ function markStall(stall) {
 
 /* ---- logi robota: najnowsze na gorze ---- */
 const ROBOTLOG_MAX = 200;
-function robotLog(d) {
+function robotLog(d, src) {
   const box = $("robotlog");
   if (box.classList.contains("muted")) { box.classList.remove("muted"); box.replaceChildren(); }
   const line = document.createElement("div");
   line.className = d.lvl;
-  /* t_ms to czas od startu robota, nie zegar - robot nie zna godziny. */
-  line.textContent = new Date().toLocaleTimeString() + "  " + d.lvl + " [" +
+  line.dataset.src = src;
+  /* t_ms to czas od startu jednostki, nie zegar - robot nie zna godziny. */
+  line.textContent = new Date().toLocaleTimeString() + "  " + src.padEnd(7) + " " + d.lvl + " [" +
     (d.t_ms / 1000).toFixed(1) + " s] " + (d.tag ? d.tag + ": " : "") + d.msg;
   box.prepend(line);
   while (box.childElementCount > ROBOTLOG_MAX) { box.lastChild.remove(); }
 }
 $("robotlog-clear").onclick = () => $("robotlog").replaceChildren();
+$("robotlog-src").onchange = () => {
+  const v = $("robotlog-src").value;
+  $("robotlog").classList.toggle("only-bryla", v === "bryla");
+  $("robotlog").classList.toggle("only-glowica", v === "glowica");
+};
 
 /* ---- log surowych wiadomosci ---- */
 let paused = false;
@@ -548,6 +607,8 @@ const STALE_AFTER_S = {
   "config": null,          // przy polaczeniu i zmianie
   "tele/boot": null,       // przy polaczeniu
   "tele/ota": null,        // przy aktualizacji
+  "head/boot": null,       // przy polaczeniu glowicy z brokerem
+  "head/ota": null,        // przy aktualizacji glowicy
   "head/mag_cal": null,    // po kalibracji (retain)
   "head/level_cal": null,  // po kalibracji (retain)
   "config_drive": null,    // przy polaczeniu i zmianie
@@ -651,8 +712,8 @@ $("pose-reset").onclick = () => send("pose_reset", "");
 $("pid-step").onclick = () => send("pid_step", $("step-v").value + " " + $("step-ms").value);
 
 /* ---- OTA ---- */
-function otaProgress(d) {
-  const bar = $("ota-pct");
+function otaProgress(d, barId) {
+  const bar = $(barId);
   const active = ["starting", "downloading", "verifying", "rebooting"].includes(d.state);
   bar.hidden = !active;
   bar.value = d.pct || 0;
@@ -678,6 +739,28 @@ armed($("ota-ver-go"), "zainstaluj", () => {
   if (/^hub-v\d+\.\d+\.\d+$/.test(v)) { send("ota", v); }
   else { $("lastack").textContent = "ota: zly format wersji, np. hub-v1.2.0"; $("lastack").style.color = "var(--bad)"; }
 });
+
+/* ---- glowica: OTA, logi, ustawienia sieci, restart (headcmd/...) ---- */
+function badAck(text) {
+  $("lastack").textContent = text;
+  $("lastack").style.color = "var(--bad)";
+}
+armed($("hota-latest"), "aktualizuj glowice do najnowszej", () => sendHead("ota", "latest"));
+armed($("hota-ver-go"), "zainstaluj", () => {
+  const v = $("hota-ver").value.trim();
+  if (/^head-v\d+\.\d+\.\d+$/.test(v)) { sendHead("ota", v); }
+  else { badAck("ota glowicy: zly format wersji, np. head-v1.2.0"); }
+});
+$("hlog-set").onclick = () => {
+  const v = $("hlog-val").value.trim();
+  if (/^\S+ [EWIDV]$/.test(v)) { sendHead("log", v); }
+  else { badAck("log glowicy: podaj tag i poziom, np. slow D albo * I"); }
+};
+$("hcfg-save").onclick = () => {
+  const v = $("hcfg-val").value.trim();
+  if (v) { sendHead("config/" + $("hcfg-key").value, v); $("hcfg-val").value = ""; }
+};
+armed($("hreboot"), "restart glowicy", () => sendHead("reboot", "1"));
 
 $("cfg-save").onclick = () => {
   const v = $("cfg-val").value.trim();

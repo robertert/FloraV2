@@ -36,7 +36,7 @@ fi
 # shellcheck disable=SC1091
 set -a; . ./.env; set +a
 
-mkdir -p data/caddy data/mosquitto data/influxdb data/grafana data/ota/hub certs
+mkdir -p data/caddy data/mosquitto data/influxdb data/grafana data/ota/hub data/ota/head certs
 
 # Skrot hasla robota dla Caddy'ego (logowanie do /ota/). Liczony przy kazdym
 # uruchomieniu, wiec zmiana MQTT_PASS_ROBOT w .env od razu go odswieza.

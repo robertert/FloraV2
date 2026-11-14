@@ -1,0 +1,17 @@
+# Tablica partycji glowicy: dwa sloty aplikacji pod aktualizacje OTA.
+# Ten sam uklad co hub/partitions.csv - opis i uzasadnienia tam.
+#
+# NVS ZOSTAJE DOKLADNIE TAM, GDZIE BYL w ukladzie "single app large"
+# (0x9000, 0x6000), wiec przejscie na OTA nie kasuje kalibracji zyroskopu,
+# magnetometru ani poziomu. Zmiana offsetu albo rozmiaru NVS = ich utrata.
+#
+# Tablicy partycji nie da sie zmienic przez OTA - kazda zmiana tego pliku
+# to flashowanie kablem.
+#
+# Name,   Type, SubType,  Offset,  Size
+nvs,      data, nvs,      0x9000,  0x6000
+otadata,  data, ota,      0xf000,  0x2000
+phy_init, data, phy,      0x11000, 0x1000
+coredump, data, coredump, 0x12000, 64K
+ota_0,    app,  ota_0,    0x30000, 3M
+ota_1,    app,  ota_1,    ,        3M

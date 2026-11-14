@@ -17,6 +17,7 @@
  */
 #include <inttypes.h>
 #include <math.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -48,6 +49,38 @@ static void on_link_state(bool up, void *ctx)
     }
 }
 
+/* Liczniki dla zadania statusu. Pisze je tylko detect_task, czyta tylko
+ * status_task - 32-bitowe zapisy na S3 sa niepodzielne, mutex zbedny. */
+static volatile uint32_t s_frames_total;
+static volatile uint32_t s_errors_total;
+static volatile bool     s_camera_ok;
+
+/** Co ile wysylamy CAM_STATUS. Musi byc wyraznie krotsze niz peer_timeout
+ *  lacza (1 s), bo flora_link nie ma wlasnego heartbeatu - bez ramek
+ *  glowica uznaje modul za nieobecny. */
+#define STATUS_PERIOD_MS 500
+
+/**
+ * Status niezaleznie od kamery: dziala takze wtedy, gdy kamera nie wstala,
+ * dzieki czemu glowica widzi modul i dostaje camera_ok = 0 zamiast ciszy.
+ */
+static void status_task(void *arg)
+{
+    uint32_t last_frames = 0;
+    while (1) {
+        const uint32_t frames = s_frames_total;
+        flora_cam_status_t st = {
+            .uptime_ms        = (uint32_t)(esp_timer_get_time() / 1000),
+            .frames_processed = (uint16_t)(frames - last_frames),
+            .error_count      = (uint16_t)s_errors_total,
+            .camera_ok        = s_camera_ok ? 1 : 0,
+        };
+        last_frames = frames;
+        flora_link_send(s_link, FLORA_MSG_CAM_STATUS, &st, sizeof st);
+        vTaskDelay(pdMS_TO_TICKS(STATUS_PERIOD_MS));
+    }
+}
+
 /** Ile klatek pod rzad bez znacznika, zanim przestaniemy o tym pisac. */
 #define QUIET_AFTER_EMPTY 10
 
@@ -60,6 +93,7 @@ static void detect_task(void *arg)
         flora_camera_frame_t fr;
         if (flora_camera_grab(&fr, 1000) != ESP_OK) {
             errors++;
+            s_errors_total = errors;
             vTaskDelay(pdMS_TO_TICKS(200));
             continue;
         }
@@ -72,9 +106,11 @@ static void detect_task(void *arg)
 
         if (r != ESP_OK) {
             errors++;
+            s_errors_total = errors;
             continue;
         }
         frames++;
+        s_frames_total = frames;
         sum_ms += res.process_ms;
         measured++;
 
@@ -115,13 +151,6 @@ static void detect_task(void *arg)
             ESP_LOGI(TAG, "%" PRIu32 " klatek, srednio %" PRIu32 " ms na klatke "
                           "(%.1f kl/s), bledow %" PRIu32,
                      frames, avg, avg ? 1000.0f / (float)avg : 0.0f, errors);
-            flora_cam_status_t st = {
-                .uptime_ms        = (uint32_t)(esp_timer_get_time() / 1000),
-                .frames_processed = 50,
-                .error_count      = (uint16_t)errors,
-                .camera_ok        = 1,
-            };
-            flora_link_send(s_link, FLORA_MSG_CAM_STATUS, &st, sizeof st);
             sum_ms = 0;
             measured = 0;
         }
@@ -147,6 +176,7 @@ void app_main(void)
         ESP_LOGE(TAG, "nie udalo sie uruchomic lacza");
         return;
     }
+    xTaskCreate(status_task, "status", 3072, NULL, 5, NULL);
 
     /* Kamera i detektor. Brak ktoregokolwiek nie blokuje lacza - modul
      * bedzie widoczny dla bryly i powie w HEAD_STATUS, ze kamera nie dziala. */
@@ -171,5 +201,6 @@ void app_main(void)
 
     /* Niski priorytet: detekcja zajmuje setki milisekund i nie moze
      * zaglodzic zadania odbiorczego lacza. */
+    s_camera_ok = true;
     xTaskCreate(detect_task, "tags", 8192, NULL, 4, NULL);
 }

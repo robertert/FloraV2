@@ -478,7 +478,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"fw\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r.source == \"tele\" and r._field == \"fw\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -583,7 +583,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"reset\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r.source == \"tele\" and r._field == \"reset\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -643,7 +643,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"boots\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r.source == \"tele\" and r._field == \"boots\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -829,7 +829,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"partition\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r.source == \"tele\" and r._field == \"partition\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -909,7 +909,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r._field == \"rolled_back\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"boot\" and r.source == \"tele\" and r._field == \"rolled_back\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -1004,7 +1004,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"ota\" and r._field == \"state\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"ota\" and r.source == \"tele\" and r._field == \"state\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -1062,7 +1062,7 @@
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"ota\" and r._field == \"to\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
+          "query": "from(bucket: \"flora\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"ota\" and r.source == \"tele\" and r._field == \"to\")\n  |> last()\n  |> keep(columns: [\"_value\"])",
           "datasource": {
             "type": "influxdb",
             "uid": "flora-influx"
@@ -1693,7 +1693,7 @@
             "type": "influxdb",
             "uid": "flora-influx"
           },
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"log\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> filter(fn: (r) => contains(value: r.lvl, set: ${log_lvl:json}))\n  |> filter(fn: (r) => r.tag =~ /${log_tag}/)\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1000)\n  // map na koncu: Grafana bierze PIERWSZA kolumne tekstowa jako tresc linii,\n  // Kolejnosc kolumn z map bywa alfabetyczna, wiec tresc to \"body\" (przed \"level\").\n  |> map(fn: (r) => ({\n      _time: r._time,\n      body: (if exists r.tag and r.tag != \"\" then \"[\" + r.tag + \"] \" else \"\")\n            + r.msg\n            + (if exists r.boot and string(v: r.boot) == \"true\" and exists r.t_ms\n               then \"   (start +\" + string(v: float(v: r.t_ms) / 1000.0) + \" s)\" else \"\"),\n      level: if r.lvl == \"E\" then \"error\" else if r.lvl == \"W\" then \"warning\"\n             else if r.lvl == \"I\" then \"info\" else \"debug\"\n    }))"
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"log\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> filter(fn: (r) => contains(value: r.lvl, set: ${log_lvl:json}))\n  |> filter(fn: (r) => r.tag =~ /${log_tag}/)\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1000)\n  // map na koncu: Grafana bierze PIERWSZA kolumne tekstowa jako tresc linii,\n  // Kolejnosc kolumn z map bywa alfabetyczna, wiec tresc to \"body\" (przed \"level\").\n  |> map(fn: (r) => ({\n      _time: r._time,\n      body: (if r.source == \"head\" then \"glowica \" else \"bryla   \")\n            + (if exists r.tag and r.tag != \"\" then \"[\" + r.tag + \"] \" else \"\")\n            + r.msg\n            + (if exists r.boot and string(v: r.boot) == \"true\" and exists r.t_ms\n               then \"   (start +\" + string(v: float(v: r.t_ms) / 1000.0) + \" s)\" else \"\"),\n      level: if r.lvl == \"E\" then \"error\" else if r.lvl == \"W\" then \"warning\"\n             else if r.lvl == \"I\" then \"info\" else \"debug\"\n    }))"
         }
       ],
       "options": {
@@ -1845,7 +1845,7 @@
             "type": "influxdb",
             "uid": "flora-influx"
           },
-          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ota\" and r._field != \"pct\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> filter(fn: (r) => r.state == \"confirmed\" or r.state == \"failed\" or r.state == \"rebooting\")\n  |> keep(columns: [\"_time\", \"state\", \"current\", \"to\", \"err\"])\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 50)"
+          "query": "from(bucket: \"flora\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"ota\" and r._field != \"pct\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> filter(fn: (r) => r.state == \"confirmed\" or r.state == \"failed\" or r.state == \"rebooting\")\n  |> keep(columns: [\"_time\", \"source\", \"state\", \"current\", \"to\", \"err\"])\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 50)"
         }
       ]
     },

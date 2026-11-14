@@ -11,6 +11,7 @@
 #                                        (z tagu server-v1.2.0, prefiks obciety)
 #   flora-deploy v1.1.0                  recznie: powrot do starszej wersji
 #   flora-deploy "ota hub-v1.2.0" < hub.bin   CI: firmware bryly dla OTA
+#   flora-deploy "ota head-v1.2.0" < node.bin CI: firmware glowicy dla OTA
 #
 # CI loguje sie kluczem, ktory w authorized_keys uzytkownika "deploy" ma
 # wymuszona komende (patrz README), wiec moze uruchomic TYLKO ten skrypt,
@@ -24,16 +25,18 @@ DIR="${FLORA_DEPLOY_DIR:-/opt/flora/tools/server}"
 # nigdy nie przychodza z zewnatrz.
 ALLOWED="docker-compose.yml setup.sh renew-certs.sh"
 
-# ================= OTA: firmware bryly =================
-# Plik z CI ladujemy do data/ota/hub, skad serwuje go Caddy (z loginem robota).
+# ================= OTA: firmware bryly i glowicy =================
+# Plik z CI ladujemy do data/ota/<jednostka> (hub albo head, wg prefiksu
+# wersji), skad serwuje go Caddy (z loginem robota).
 # Sume i rozmiar liczymy TUTAJ, nie bierzemy z CI: robot porownuje z nimi
 # to, co pobral, wiec musza opisywac plik, ktory faktycznie lezy na serwerze.
-OTA_MAX_BYTES=$((3 * 1024 * 1024))   # rozmiar slotu w hub/partitions.csv
+OTA_MAX_BYTES=$((3 * 1024 * 1024))   # rozmiar slotu w hub/ i node/partitions.csv
 OTA_KEEP=5                           # tyle ostatnich wersji zostaje
 
-if [[ "${*:-}" =~ ^ota\ (hub-v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+if [[ "${*:-}" =~ ^ota\ ((hub|head)-v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
     VER="${BASH_REMATCH[1]}"
-    OTA="$DIR/data/ota/hub"
+    UNIT="${BASH_REMATCH[2]}"
+    OTA="$DIR/data/ota/$UNIT"
     mkdir -p "$OTA"
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
@@ -63,7 +66,7 @@ if [[ "${*:-}" =~ ^ota\ (hub-v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
     # latest.json tylko do przodu: ponowne wgranie starszej wersji (np.
     # przebudowa starego tagu) nie cofa "najnowszej".
     cur=$(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' "$OTA/latest.json" 2>/dev/null || true)
-    newest=$(printf '%s\n%s\n' "${cur:-hub-v0.0.0}" "$VER" | sort -V | tail -n 1)
+    newest=$(printf '%s\n%s\n' "${cur:-$UNIT-v0.0.0}" "$VER" | sort -V | tail -n 1)
     if [ "$newest" = "$VER" ]; then
         install -m 644 "$tmp/fw.json" "$OTA/.latest.json.tmp" && mv "$OTA/.latest.json.tmp" "$OTA/latest.json"
         echo "latest: $VER"
@@ -71,7 +74,7 @@ if [[ "${*:-}" =~ ^ota\ (hub-v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
 
     # Sprzatanie: zostaje OTA_KEEP najnowszych wersji. Najnowsza z latest.json
     # jest zawsze wsrod nich, bo sortujemy po numerze wersji.
-    ls "$OTA" | sed -n 's/^\(hub-v[0-9.]*\)\.bin$/\1/p' | sort -V | head -n -"$OTA_KEEP" \
+    ls "$OTA" | sed -n "s/^\($UNIT-v[0-9.]*\)\.bin\$/\1/p" | sort -V | head -n -"$OTA_KEEP" \
         | while read -r old; do rm -f "$OTA/$old.bin" "$OTA/$old.json"; echo "usunieto $old"; done
 
     echo "ota: $VER, $size B, sha256 $sha"
@@ -113,7 +116,7 @@ cd "$DIR"
 # Uzupelnienia .env dla serwerow postawionych starszym setup.sh - inaczej
 # nowa wersja stacku nie wstanie i test zdrowia cofnalby wdrozenie.
 # Logika jak w setup.sh: skrot hasla robota dla /ota/ w Caddym.
-mkdir -p data/ota/hub
+mkdir -p data/ota/hub data/ota/head
 # Pusty skrot liczy sie jak brak - Caddy z pustym nie wstanie.
 if ! grep -q "^OTA_PASS_HASH='..*'" .env; then
     robot_pass=$(sed -n 's/^MQTT_PASS_ROBOT=//p' .env)

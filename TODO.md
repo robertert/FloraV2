@@ -1,5 +1,16 @@
 # TODO
 
+## PCB glowicy - nastepna wersja
+
+- **RST muxa (TCA9548A, U4 pin 5) na wolny GPIO** (np. GPIO1 albo GPIO2,
+  wolne wg netlisty). Dzis RST wisi w powietrzu, wiec reset ESP nie
+  resetuje muxa: jeden zwarty kanal kladzie cala magistrale I2C i pomaga
+  tylko odciecie zasilania. Z RST firmware zresetuje mux przy starcie,
+  pominie zepsuty kanal i uruchomi reszte. Szczegoly: `CZESTE_BLEDY.md`.
+- **Zlacza z zatrzaskiem dla VEML-i i BME** (np. JST-XH zamiast goldpinow).
+  SCL lezy obok GND w J2 i J5 - krzywa wtyczka = zwarcie, a drgania przy
+  jezdzie to rozrusza.
+
 ## Straznicy napedu i bezpieczenstwa (odlozone - brak czesci sprzetu)
 
 Stan obecny (`flora_motors`): utyk z bezruchu (moc >= 15%, < 5 impulsow

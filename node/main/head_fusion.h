@@ -37,5 +37,9 @@ float head_fusion_heading(void);
 /** Czy kurs jest wiarygodny (po ALIGN, z dzialajacym IMU). */
 bool head_fusion_heading_valid(void);
 
+/** Ostatnia probka IMU i pochylenie/przechyl po offsecie - tylko do logu. */
+void head_fusion_debug(float accel_g[3], float gyro_dps[3], float *pitch_deg,
+                       float *roll_deg);
+
 /** Liczba nieudanych odczytow IMU od startu. */
 uint32_t head_fusion_errors(void);

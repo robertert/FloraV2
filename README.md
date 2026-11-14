@@ -3,6 +3,8 @@
 Autonomiczna, solarna, mobilna doniczka: jezdzi po trawniku za sloncem, mierzy
 warunki i sama podlewa rosline. Praca inzynierska AGH, termin styczen 2027.
 
+Cos nie dziala przy uruchamianiu? Zacznij od `CZESTE_BLEDY.md`.
+
 ## Uklad repozytorium
 
 Jedno repo, dwie jednostki polaczone UART-em przez maszt, wspolne sterowniki.
@@ -114,6 +116,40 @@ Grafana pod http://localhost:3001 (admin / flora-admin), dashboard
 panel za HTTPS): `tools/server/README.md`. Hasla domyslne sa tylko do laptopa - na serwer ustaw wlasne
 w `tools/telemetry/.env` (`INFLUX_PASSWORD`, `INFLUX_TOKEN`, `GRAFANA_PASSWORD`).
 
+## Glowica w sieci
+
+Glowica ma wlasne WiFi i polaczenie z brokerem (`node/main/head_net.c`),
+niezalezne od UART-u w maszcie - da sie ja debugowac bez kabla i takze wtedy,
+gdy lacze z bryla nie dziala. Ten sam login co bryla (`robot1`), ta sama baza
+tematow, osobne nazwy:
+
+| Temat | Co |
+|---|---|
+| `headstatus` | `online` / `offline` (retain + testament) |
+| `head/log` | logi W i E, caly start, wiecej na zadanie |
+| `head/boot` | wersja, powod restartu, licznik startow |
+| `head/ota` | stan aktualizacji |
+| `headcmd/<x>` | komendy, odpowiedz w `headack/<x>` |
+
+Komendy: `log` (`"slow D"`), `reboot`, `ota` (`latest` albo `head-v1.2.0`),
+`config/<klucz>` (`wifi_ssid`, `wifi_pass`, `mqtt_uri`, `mqtt_user`,
+`mqtt_pass`; `-` kasuje, dziala po restarcie).
+
+```sh
+mosquitto_sub -t 'flora/robot1/head/log' -v
+mosquitto_pub -t flora/robot1/headcmd/log -m 'slow D'
+```
+
+W panelu: kropka "glowica" u gory, karty "Start glowicy" i "Glowica: serwis
+i OTA", a logi obu jednostek sa na jednej liscie z filtrem.
+
+**Pierwsze uruchomienie.** Haslo brokera glowica trzyma we wlasnym NVS, wiec
+trzeba je wpisac raz: bez hasla glowica laczy sie z brokerem na Macu
+(krok 1 w "Debug przez MQTT"), tam `headcmd/config/mqtt_pass`, potem
+`headcmd/reboot`. Wspolne klocki z bryla: `components/flora_net`,
+`flora_diag`, `flora_ota`. Wylacznik: `FLORA_HEAD_NET_DEFAULT` w
+`flora_head_board.h`.
+
 ## Aktualizacja przez siec (OTA)
 
 Bryla ma dwa sloty aplikacji (`hub/partitions.csv`). Nowa wersja laduje do
@@ -130,8 +166,12 @@ wolnego, a stara zostaje jako zapas:
    potwierdzeniem bootloader wraca do poprzedniej, a `tele/boot` pokazuje ja
    w `rolled_back`.
 
+Glowica dziala tak samo, z wlasnymi tagami: `git tag head-v0.1.0`, karta
+"Glowica: serwis i OTA" w panelu, postep na `head/ota`, sloty w
+`node/partitions.csv`. Nic jej nie blokuje (nie ma napedu ani pompki).
+
 Tablicy partycji nie da sie zmienic przez OTA. Zmiana `hub/partitions.csv`
-oznacza flashowanie kablem. NVS lezy w tym samym miejscu co w dawnym ukladzie,
+albo `node/partitions.csv` oznacza flashowanie kablem. NVS lezy w tym samym miejscu co w dawnym ukladzie,
 wiec przejscie na OTA nie kasuje hasla brokera ani kalibracji.
 
 ## Podglad kamery i zbieranie danych

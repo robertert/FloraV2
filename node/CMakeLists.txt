@@ -4,6 +4,15 @@ cmake_minimum_required(VERSION 3.22)
 # include(project.cmake), inaczej komponenty nie zostana znalezione.
 set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../components")
 
+# Wersja firmware z tagu head-vX.Y.Z (bez niego skrot commita) - po niej
+# OTA rozpoznaje, co jest zainstalowane. Tagi hub-v... sa dla bryly.
+execute_process(
+    COMMAND git describe --tags --match "head-v*" --always --dirty
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE PROJECT_VER
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(node)
 

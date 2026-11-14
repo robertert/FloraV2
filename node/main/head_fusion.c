@@ -84,6 +84,7 @@ static struct {
     bool      mag_valid;      /**< jest swiezy, niezaklocony pomiar */
     bool      mag_seen;       /**< magnetometr w ogole odpowiada */
     head_attitude_t att;        /**< po offsecie poziomu - tego uzywa reszta */
+    flora_icm20948_data_t last; /**< ostatni udany odczyt, do podgladu w logu */
     head_attitude_t tilt_raw;   /**< wyjscie filtra, bez offsetu */
     bool      tilt_init;
     int64_t   tilt_last_us;
@@ -669,6 +670,7 @@ static void fusion_task(void *arg)
             continue;
         }
         int64_t sample_us = esp_timer_get_time();
+        s_f.last = d;
         if (s_f.fail_streak >= FAULT_THRESHOLD) {
             ESP_LOGI(TAG, "IMU znowu odpowiada");
         }
@@ -808,3 +810,16 @@ head_fusion_state_t head_fusion_state(void)  { return s_f.state; }
 float    head_fusion_heading(void)           { return s_f.kf.psi; }
 bool     head_fusion_heading_valid(void)     { return s_f.heading_valid; }
 uint32_t head_fusion_errors(void)            { return s_f.errors; }
+
+void head_fusion_debug(float accel_g[3], float gyro_dps[3], float *pitch_deg,
+                       float *roll_deg)
+{
+    /* Bez blokady: czytamy z innego zadania i moze trafic sie mieszanka
+     * dwoch kolejnych probek. Do podgladu w logu to bez znaczenia. */
+    for (int i = 0; i < 3; i++) {
+        accel_g[i]  = s_f.last.accel_g[i];
+        gyro_dps[i] = s_f.last.gyro_dps[i];
+    }
+    *pitch_deg = s_f.att.pitch_deg;
+    *roll_deg  = s_f.att.roll_deg;
+}

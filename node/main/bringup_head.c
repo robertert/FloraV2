@@ -68,6 +68,12 @@ static int bus_scan(void)
 
 /* ================= KOMPAS SLONECZNY ================= */
 
+/* Indeks to kierunek (kolejnosc jak w s_sun_name), wartosc to kanal muxa. */
+static const uint8_t s_sun_ch[FLORA_HEAD_SUN_COUNT] = {
+    FLORA_HEAD_SUN_CH_N, FLORA_HEAD_SUN_CH_E,
+    FLORA_HEAD_SUN_CH_S, FLORA_HEAD_SUN_CH_W,
+};
+
 static void test_sun_compass(void)
 {
     ESP_LOGI(TAG, "=== KOMPAS SLONECZNY ===");
@@ -84,7 +90,7 @@ static void test_sun_compass(void)
 
     for (int i = 0; i < FLORA_HEAD_SUN_COUNT; i++) {
         s_sun_port[i].mux     = s_mux;
-        s_sun_port[i].channel = (uint8_t)i;
+        s_sun_port[i].channel = s_sun_ch[i];
 
         flora_veml7700_cfg_t cfg = FLORA_VEML7700_DEFAULT_CFG();
         cfg.address     = FLORA_HEAD_ADDR_VEML;
@@ -95,7 +101,7 @@ static void test_sun_compass(void)
         if (flora_veml7700_init(s_bus, &cfg, &s_sun[i]) == ESP_OK) {
             s_sun_found++;
         } else {
-            ESP_LOGE(TAG, "  kanal %d (%s): brak czujnika", i, s_sun_name[i]);
+            ESP_LOGE(TAG, "  kanal %u (%s): brak czujnika", s_sun_ch[i], s_sun_name[i]);
             s_sun[i] = NULL;
         }
     }
@@ -177,8 +183,6 @@ static void test_imu(void)
     flora_icm20948_cfg_t cfg = FLORA_ICM20948_DEFAULT_CFG();
     cfg.address  = FLORA_HEAD_ADDR_ICM;
     cfg.speed_hz = FLORA_HEAD_I2C_FREQ_HZ;
-    /* TYMCZASOWE: test, czy tryb przelotowy magnetometru kladzie magistrale. */
-    cfg.enable_magnetometer = false;
 
     esp_err_t err = flora_icm20948_init(s_bus, &cfg, &s_imu);
     if (err != ESP_OK) {

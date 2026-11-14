@@ -35,6 +35,10 @@ static const char *TAG = "slow";
 #define SUN_RAW_LOW       1000    /**< ciemno - zwieksz czulosc */
 #define SUN_GAIN_HOLD_TICKS 2     /**< przerwa po zmianie, by nie oscylowalo */
 
+/* Podglad w logu co sekunde: luksy, azymut slonca, akcelerometr. Do testow
+ * na stole - w terenie wylaczyc (0), bo zalewa log. */
+#define SLOW_DEBUG_LOG    1
+
 /** Nastawy czulosci od najmniej do najbardziej czulej. */
 static const struct { flora_veml_gain_t g; flora_veml_it_t it; const char *name; }
 SUN_STEPS[] = {
@@ -202,10 +206,27 @@ static void do_sun(void)
     }
 
     if (got < 2) {
+        if (SLOW_DEBUG_LOG) {
+            ESP_LOGI(TAG, "slonce: tylko %d kanal(y) - kierunku nie liczymy", got);
+        }
         return;   /* mniej niz dwa kanaly - kierunku nie ma z czego policzyc */
     }
 
     head_sun_t sun = head_sun_azimuth(lux, SUN_MIN_LUX, SUN_MIN_CONTRAST);
+
+    if (SLOW_DEBUG_LOG) {
+        float hi = 0.0f;
+        for (int i = 0; i < 4; i++) {
+            if (lux[i] > hi) hi = lux[i];
+        }
+        /* Azymut wzgledem glowicy: 0 = czujnik N, 90 = E, 180 = S, 270 = W. */
+        const char *why = sun.valid ? "OK"
+                        : (hi < SUN_MIN_LUX ? "za ciemno" : "za maly kontrast");
+        ESP_LOGI(TAG, "slonce: N %7.1f  E %7.1f  S %7.1f  W %7.1f lx | "
+                      "azymut %5.1f st, kontrast %.2f (%s)",
+                 lux[0], lux[1], lux[2], lux[3],
+                 sun.azimuth_deg, sun.contrast, why);
+    }
 
     flora_sun_t m = {
         .timestamp_us   = head_cmd_stamp(esp_timer_get_time()),
@@ -305,6 +326,15 @@ static void slow_task(void *arg)
         }
 
         do_sun();
+        if (SLOW_DEBUG_LOG && head_fusion_state() == HEAD_FUSION_RUN) {
+            float a[3], g[3], pitch, roll;
+            head_fusion_debug(a, g, &pitch, &roll);
+            ESP_LOGI(TAG, "imu: acc %+.3f %+.3f %+.3f g (|%.3f|) | "
+                          "pochylenie %+5.1f przechyl %+5.1f st | "
+                          "zyro %+6.2f %+6.2f %+6.2f st/s",
+                     a[0], a[1], a[2], sqrtf(a[0]*a[0] + a[1]*a[1] + a[2]*a[2]),
+                     pitch, roll, g[0], g[1], g[2]);
+        }
         if (s_s.tick % WEATHER_DIVIDER == 0) {
             do_weather();
         }
