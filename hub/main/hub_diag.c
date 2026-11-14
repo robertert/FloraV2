@@ -13,9 +13,12 @@
  *   - wiecej na zadanie: cmd/log "<tag|*> <E|W|I|D|V>" (hub_diag_set_level),
  *     np. "flora_sonar D" na czas szukania bledu. Nie zapisywane w NVS -
  *     po restarcie wraca W, zeby zapomniane D nie zalewalo bazy,
- *   - START: od wlaczenia do pierwszego polaczenia z brokerem wszystko od
- *     poziomu I w gore laduje w buforze w PSRAM (BOOT_LINES linii) i wychodzi
- *     po polaczeniu - widac caly start, np. ktore czujniki wstaly. t_ms w
+ *   - START: przez pierwsze BOOT_WINDOW_MS od wlaczenia wszystko od poziomu
+ *     I w gore laduje w buforze w PSRAM (BOOT_LINES linii) i wychodzi, gdy
+ *     jest polaczenie. Okno jest czasowe, nie "do polaczenia": sprzet
+ *     (naped, czujniki) startuje dopiero PO polaczeniu z brokerem, wiec
+ *     zamkniecie bufora przy polaczeniu gubilo akurat to, co najwazniejsze.
+ *     Widac caly start, np. ktore czujniki wstaly. t_ms w
  *     kazdej linii to czas od startu, bo w Grafanie te linie maja czas
  *     wyslania, nie zapisu.
  *
@@ -40,6 +43,7 @@
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 
 #include "hub_diag.h"
 #include "flora_board.h"
@@ -52,6 +56,7 @@ static const char *TAG = "diag";
 #define QUEUE_LEN      64
 #define SEND_GAP_MS    20    /* najwyzej ~50 linii/s, zeby petla bledow nie zalala brokera */
 #define BOOT_LINES     300   /* bufor startu w PSRAM, ~72 kB */
+#define BOOT_WINDOW_MS 30000 /* jak dlugo od wlaczenia zbierac linie I */
 #define TAG_RULES      8     /* ile tagow moze miec wlasny poziom naraz */
 
 typedef struct {
@@ -84,6 +89,7 @@ typedef struct {
 static boot_slot_t     *s_boot;
 static volatile bool    s_boot_capture;
 static volatile int     s_boot_n;           /* zarezerwowane sloty */
+static int              s_boot_sent;        /* juz wyslane (tylko zadanie logow) */
 static volatile uint32_t s_boot_dropped;
 
 static esp_reset_reason_t s_reset;
@@ -314,23 +320,35 @@ static void publish_line(const char *line, bool boot)
     flora_mqtt_publish_str("tele/log", buf, 0, false);
 }
 
-/** Po pierwszym polaczeniu: zamyka bufor startu i wysyla go w kolejnosci. */
+/**
+ * Wysyla, co przybylo w buforze startu. Po uplywie okna zamyka zbieranie,
+ * a gdy wszystko wyszlo - zwalnia bufor.
+ */
 static void flush_boot(void)
 {
+    bool closing = esp_timer_get_time() / 1000 >= BOOT_WINDOW_MS;
     taskENTER_CRITICAL(&s_lock);
-    s_boot_capture = false;
+    if (closing) {
+        s_boot_capture = false;
+    }
     int n = s_boot_n;
     taskEXIT_CRITICAL(&s_lock);
 
-    for (int i = 0; i < n; i++) {
-        /* Slot zarezerwowany tuz przed zamknieciem moze byc jeszcze pisany. */
-        for (int t = 0; t < 10 && !s_boot[i].ready; t++) {
+    for (; s_boot_sent < n; s_boot_sent++) {
+        /* Slot zarezerwowany przed chwila moze byc jeszcze pisany. */
+        for (int t = 0; t < 10 && !s_boot[s_boot_sent].ready; t++) {
             vTaskDelay(pdMS_TO_TICKS(1));
         }
-        if (s_boot[i].ready) {
-            publish_line(s_boot[i].line, true);
+        if (s_boot[s_boot_sent].ready) {
+            publish_line(s_boot[s_boot_sent].line, true);
         }
         vTaskDelay(pdMS_TO_TICKS(SEND_GAP_MS));
+        if (!flora_mqtt_is_connected()) {
+            return;   /* reszta przy nastepnym polaczeniu */
+        }
+    }
+    if (!closing) {
+        return;
     }
     if (s_boot_dropped) {
         char note[96];
@@ -354,7 +372,7 @@ static void log_task(void *arg)
         if (s_boot) {
             flush_boot();
         }
-        if (xQueueReceive(s_queue, &l, pdMS_TO_TICKS(500)) != pdTRUE) {
+        if (xQueueReceive(s_queue, &l, pdMS_TO_TICKS(s_boot ? 100 : 500)) != pdTRUE) {
             continue;
         }
         publish_line(l.line, false);

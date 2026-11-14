@@ -13,8 +13,9 @@
  * z inicjalizacji sprzetu (np. brak czujnika) czekaja w kolejce i wychodza
  * na tele/log, gdy tylko robot polaczy sie z brokerem.
  *
- * Na MQTT ida zawsze W i E, caly start od poziomu I (bufor do pierwszego
- * polaczenia) i to, co wlaczy hub_diag_set_level. Konsola USB jak dotad.
+ * Na MQTT ida zawsze W i E, caly start od poziomu I (pierwsze 30 s, bufor
+ * wychodzi po polaczeniu) i to, co wlaczy hub_diag_set_level. Konsola USB
+ * jak dotad.
  */
 esp_err_t hub_diag_init(void);
 
