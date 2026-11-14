@@ -65,6 +65,7 @@ static flora_level_handle_t  s_level;
 static flora_pwrsw_handle_t  s_mast;
 
 static bool s_drive_ok, s_pump_ok, s_soil_ok, s_sonar_ok, s_temp_ok;
+static bool temp_init(void);
 
 /** Powod ostatniego zakonczenia pompki; -1 gdy jeszcze nie pracowala. */
 static volatile int s_pump_last_reason = -1;
@@ -223,11 +224,9 @@ static void soil_init(void)
 
 static void sensors_init(void)
 {
-    flora_temp_cfg_t tcfg = FLORA_TEMP_DEFAULT_CFG();
-    tcfg.gpio = FLORA_PIN_DS18B20;
-    s_temp_ok = (flora_temp_init(&tcfg) == ESP_OK);
+    s_temp_ok = temp_init();
     if (!s_temp_ok) {
-        ESP_LOGW(TAG, "brak DS18B20");
+        ESP_LOGW(TAG, "brak DS18B20 - szukam dalej w tle");
     }
 
     flora_sonar_cfg_t scfg = FLORA_SONAR_DEFAULT_CFG();
@@ -466,33 +465,105 @@ static void pub_sonar(void)
  * po czasie konwersji. Odczyt blokujacy zatrzymalby cala telemetrie
  * na 375 ms.
  */
+/* ================= DS18B20 Z PONAWIANIEM =================
+ *
+ * Czujnik bywa niewidoczny przy starcie (styk na zaciskach / dupontach),
+ * a dawniej znaczylo to brak temperatury az do restartu. Teraz:
+ *   - brak przy starcie -> szukamy dalej, co 30 s, potem coraz rzadziej
+ *     (do 10 min), zeby nie zasypywac logow, gdy czujnika naprawde nie ma,
+ *   - pojedynczy blad odczytu (CRC, brak odpowiedzi) -> jedna powtorka,
+ *   - TEMP_LOST_AFTER odczytow pod rzad bez zadnego wyniku -> czujnik
+ *     uznany za zgubiony, magistrala zwolniona i szukanie od nowa
+ *     (np. po przepieciu przewodu adres i liczba czujnikow moga sie zmienic).
+ * W tele/temp: err = bledy odczytu od startu, rescan = ile razy szukano od nowa. */
+#define TEMP_RETRY_MIN_MS  30000
+#define TEMP_RETRY_MAX_MS  600000
+#define TEMP_LOST_AFTER    5
+
+static uint32_t s_temp_errors, s_temp_rescans;
+
+static bool temp_init(void)
+{
+    flora_temp_cfg_t tcfg = FLORA_TEMP_DEFAULT_CFG();
+    tcfg.gpio = FLORA_PIN_DS18B20;
+    return flora_temp_init(&tcfg) == ESP_OK;
+}
+
+/** Wolane co takt, gdy czujnika nie ma: ponawia szukanie z rosnacym odstepem. */
+static void temp_retry(void)
+{
+    static int64_t next_us;
+    static uint32_t gap_ms = TEMP_RETRY_MIN_MS;
+    int64_t now = esp_timer_get_time();
+    if (next_us == 0) {
+        next_us = now + (int64_t)gap_ms * 1000;
+        return;
+    }
+    if (now < next_us) {
+        return;
+    }
+    s_temp_rescans++;
+    if (temp_init()) {
+        ESP_LOGI(TAG, "DS18B20 znaleziony przy ponownym szukaniu (%" PRIu32 ")", s_temp_rescans);
+        s_temp_ok = true;
+        next_us = 0;
+        gap_ms = TEMP_RETRY_MIN_MS;
+        return;
+    }
+    gap_ms = gap_ms * 2 > TEMP_RETRY_MAX_MS ? TEMP_RETRY_MAX_MS : gap_ms * 2;
+    next_us = now + (int64_t)gap_ms * 1000;
+}
+
 static void temp_step(bool due)
 {
     static int64_t started_us;
+    static int lost_streak;
 
     if (started_us == 0) {
-        if (due && flora_temp_start_conversion() == ESP_OK) {
-            started_us = esp_timer_get_time();
+        if (due) {
+            if (flora_temp_start_conversion() == ESP_OK) {
+                started_us = esp_timer_get_time();
+            } else {
+                s_temp_errors++;
+                lost_streak++;
+            }
         }
-        return;
-    }
-    if (esp_timer_get_time() - started_us < (int64_t)flora_temp_conversion_ms() * 1000) {
-        return;
-    }
-    started_us = 0;
+    } else if (esp_timer_get_time() - started_us >= (int64_t)flora_temp_conversion_ms() * 1000) {
+        started_us = 0;
 
-    char buf[96];
-    int n = snprintf(buf, sizeof buf, "{\"c\":[");
-    for (int i = 0; i < flora_temp_count() && n < (int)sizeof buf - 12; i++) {
-        float c = NAN;
-        if (flora_temp_fetch(i, &c) != ESP_OK || c == FLORA_TEMP_INVALID) {
-            c = NAN;
+        char buf[128];
+        int n = snprintf(buf, sizeof buf, "{\"c\":[");
+        bool any = false;
+        for (int i = 0; i < flora_temp_count() && n < (int)sizeof buf - 48; i++) {
+            float c = NAN;
+            esp_err_t err = flora_temp_fetch(i, &c);
+            if (err != ESP_OK) {
+                /* Zwykle CRC po zakloceniu - wynik konwersji dalej lezy
+                 * w czujniku, wiec drugi odczyt czesto juz przechodzi. */
+                s_temp_errors++;
+                err = flora_temp_fetch(i, &c);
+            }
+            if (err != ESP_OK || c == FLORA_TEMP_INVALID) {
+                c = NAN;
+            } else {
+                any = true;
+            }
+            char b[16];
+            n += snprintf(buf + n, sizeof buf - n, "%s%s", i ? "," : "", num(b, sizeof b, c, 2));
         }
-        char b[16];
-        n += snprintf(buf + n, sizeof buf - n, "%s%s", i ? "," : "", num(b, sizeof b, c, 2));
+        snprintf(buf + n, sizeof buf - n, "],\"err\":%" PRIu32 ",\"rescan\":%" PRIu32 "}",
+                 s_temp_errors, s_temp_rescans);
+        flora_mqtt_publish_str("tele/temp", buf, 0, false);
+        lost_streak = any ? 0 : lost_streak + 1;
     }
-    snprintf(buf + n, sizeof buf - n, "]}");
-    flora_mqtt_publish_str("tele/temp", buf, 0, false);
+
+    if (lost_streak >= TEMP_LOST_AFTER) {
+        ESP_LOGW(TAG, "DS18B20 nie odpowiada %d razy pod rzad - szukam od nowa", lost_streak);
+        flora_temp_deinit();
+        s_temp_ok = false;
+        started_us = 0;
+        lost_streak = 0;
+    }
 }
 
 static void pub_water(void)
@@ -726,7 +797,7 @@ static void telemetry_task(void *arg)
         if (s_soil_ok && DUE(tick, 2000)) { pub_soil(); }
         /* Jeden czujnik w tescie: szybciej, zeby reakcja na dlon byla od razu. */
         if (s_sonar_ok && DUE(tick, s_sonar_sel < 0 ? 500 : 200)) { pub_sonar(); }
-        if (s_temp_ok) { temp_step(DUE(tick, 2000)); }
+        if (s_temp_ok) { temp_step(DUE(tick, 2000)); } else { temp_retry(); }
 
         if (s_level) {
             bool water = flora_level_water_present(s_level);
