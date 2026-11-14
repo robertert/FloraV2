@@ -30,6 +30,7 @@
  *   cmd/pump         on | off | liczba ms | "ml <objetosc>" (po pump_cal)
  *   cmd/mast         on | off
  *   cmd/sonar        a | b | c | all, test dalmierzy po kolei (tylko wybrany, szybciej)
+ *   cmd/log          "<tag|*> <E|W|I|D|V>", wiecej logow na tele/log, hub_diag.h
  *   cmd/stall_clear  dowolny
  *   cmd/reboot       dowolny, restart po 0,5 s
  *   cmd/config/<k>   zapis ustawienia do NVS, patrz hub_config.h

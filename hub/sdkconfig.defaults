@@ -26,3 +26,8 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
+
+# Logi: domyslnie I jak dotad, ale D wkompilowane, zeby dalo sie je wlaczyc
+# zdalnie dla jednego modulu (cmd/log "flora_sonar D", hub_diag.c).
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y

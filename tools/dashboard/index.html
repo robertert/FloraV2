@@ -52,6 +52,7 @@
   #robotlog { max-height: 200px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
   #robotlog .E { color: var(--bad); }
   #robotlog .W { color: var(--warn); }
+  #robotlog .I, #robotlog .D { color: var(--muted); }
   .muted { color: var(--muted); }
   /* Dalmierze: trzy kafelki obok siebie, do testu po kolei. */
   .sonars { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
@@ -301,8 +302,8 @@
   </section>
 
   <section class="card wide">
-    <h2>Logi robota (W i E) <button id="robotlog-clear" style="font-size:11px;padding:1px 6px">wyczysc</button></h2>
-    <div id="robotlog" class="muted">brak - robot wysyla tylko ostrzezenia i bledy</div>
+    <h2>Logi robota <button id="robotlog-clear" style="font-size:11px;padding:1px 6px">wyczysc</button></h2>
+    <div id="robotlog" class="muted">brak - robot wysyla zawsze W i E, caly start po polaczeniu, a wiecej na zadanie: cmd/log "flora_sonar D"</div>
   </section>
 
   <section class="card wide">
