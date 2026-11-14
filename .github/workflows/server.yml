@@ -53,6 +53,8 @@ jobs:
           # VPS w OVH to x86_64.
           platforms: linux/amd64
           push: true
+          # Uzywa tylko obraz caddy (wersja w panelu); reszta ignoruje.
+          build-args: FLORA_VERSION=${{ steps.ver.outputs.version }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/flora-${{ matrix.service }}:${{ steps.ver.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/flora-${{ matrix.service }}:latest

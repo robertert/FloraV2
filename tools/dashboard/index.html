@@ -19,6 +19,7 @@
            padding: 10px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
            background: var(--bg); z-index: 1; }
   header h1 { font-size: 15px; margin: 0 12px 0 0; }
+  header h1 .ver { font-size: 12px; font-weight: normal; color: var(--muted); }
   /* Formularz tylko dla menedzera hasel - ukladem zostaje czescia naglowka. */
   header form { display: contents; }
   input, button, select { font: inherit; color: var(--text); background: var(--panel);
@@ -56,7 +57,7 @@
 </head>
 <body>
 <header>
-  <h1>Flora debug</h1>
+  <h1>Flora debug <span id="srvver" class="ver" title="wersja serwera"></span></h1>
   <!-- Prawdziwy formularz logowania z atrybutami autocomplete: bez niego
        menedzery hasel (Safari, Chrome, 1Password) nie rozpoznaja logowania
        i nie proponuja zapisu. -->
@@ -683,6 +684,13 @@ if (location.protocol !== "https:" || ($("user").value && $("pass").value)) {
 } else {
   setPill("conn", false, "broker: wpisz login i haslo, potem Polacz");
 }
+
+/* Wersja serwera z obrazu caddy (version.txt); przy otwarciu pliku
+ * lokalnie albo starym obrazie po prostu jej nie ma. */
+fetch("version.txt", { cache: "no-store" })
+  .then(r => r.ok ? r.text() : "")
+  .then(t => { t = t.trim(); if (t && t.length < 40) $("srvver").textContent = "serwer " + t; })
+  .catch(() => {});
 </script>
 </body>
 </html>
