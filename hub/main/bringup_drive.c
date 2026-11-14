@@ -491,37 +491,22 @@ static esp_err_t drive_hw_init(void)
     flora_motors_cfg_t motors_cfg = FLORA_MOTORS_DEFAULT_CFG();
     motors_cfg.left  = (flora_motor_cfg_t){ .pwm_gpio = FLORA_PIN_MOTOR_L_PWM,
                                             .dir_gpio = FLORA_PIN_MOTOR_L_DIR,
-                                            .invert   = false };
+                                            .invert   = FLORA_MOTOR_L_INVERT };
     motors_cfg.right = (flora_motor_cfg_t){ .pwm_gpio = FLORA_PIN_MOTOR_R_PWM,
                                             .dir_gpio = FLORA_PIN_MOTOR_R_DIR,
-                                            .invert   = true };
+                                            .invert   = FLORA_MOTOR_R_INVERT };
     ESP_RETURN_ON_ERROR(flora_motors_init(&motors_cfg), TAG, "naped");
 
-    /* TODO (kalibracja kierunku, nierozstrzygniete 2026-10-14):
-     * Oba enkodery licza UJEMNIE przy komendzie "w przod". Surowe znaki sa
-     * przeciwne, czyli wzajemnie silniki kreca sie dobrze. Po zamontowaniu
-     * kol w podwoziu sprawdzic przebieg "jazda prosto":
-     *   jedzie w przod -> odwrocic invert w enc_cfg
-     *   jedzie w tyl   -> odwrocic invert w motors_cfg */
-    /* OKABLOWANIE: wtyczki enkoderow sa wpiete ODWROTNIE wzgledem pinoutu.
-     * Zmierzone dwa razy, na dwoch roznych kompletach silnikow:
-     *   19.10.2026 (stare silniki) i 27.10.2026 (nowe) - za kazdym razem
-     *   lewy silnik kreci enkoderem na GPIO17/18, prawy na GPIO15/16.
-     * Powtarzalnosc wskazuje, ze tak jest zrobiona wiazka, a nie ze ktos
-     * raz pomylil wtyczki. Kompensujemy w kodzie.
-     *
-     * Jesli kiedys przepniesz wiazke na zgodna z pinoutem, zdejmij to
-     * mapowanie - diagnostyka zbocz powie, czy nadal jest potrzebne. */
+    /* Docelowa plytka ma wiazke zgodna z pinoutem (lewe kolo = GPIO15/16,
+     * sprawdzone multimetrem 14.11.2026) - zamiana z perfboardu zdjeta.
+     * Kierunki i procedura sprawdzenia: FLORA_*_INVERT w flora_board.h. */
     flora_encoders_cfg_t enc_cfg = FLORA_ENCODERS_DEFAULT_CFG();
-    /* Znak lewego enkodera ustalony obserwacja 27.10.2026: robot jechal
-     * prosto, a enkodery pokazywaly przeciwne znaki - czyli silniki byly
-     * zgodne, a mylil sie sam odczyt. */
-    enc_cfg.left  = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_R_A,   /* zamienione */
-                                           .b_gpio = FLORA_PIN_ENC_R_B,
-                                           .invert = true };
-    enc_cfg.right = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_L_A,   /* zamienione */
+    enc_cfg.left  = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_L_A,
                                            .b_gpio = FLORA_PIN_ENC_L_B,
-                                           .invert = true };
+                                           .invert = FLORA_ENC_L_INVERT };
+    enc_cfg.right = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_R_A,
+                                           .b_gpio = FLORA_PIN_ENC_R_B,
+                                           .invert = FLORA_ENC_R_INVERT };
     enc_cfg.mm_per_count = FLORA_MM_PER_COUNT;
     ESP_RETURN_ON_ERROR(flora_encoders_init(&enc_cfg), TAG, "enkodery");
 

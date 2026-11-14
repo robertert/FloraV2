@@ -3,8 +3,8 @@
  * @brief Publikacja stanu bryly i wiadomosci glowicy na MQTT.
  *
  * Konfiguracje sprzetu sa przeniesione z testow rozruchowych, ktore je
- * potwierdzily na sprzecie - w szczegolnosci zamienione wtyczki enkoderow
- * z bringup_drive.c. Zmiana tam wymaga zmiany tutaj.
+ * potwierdzily na sprzecie. Kierunki silnikow i enkoderow wspolne dla obu
+ * miejsc: FLORA_*_INVERT w flora_board.h.
  *
  * Jedno zadanie, takt 100 ms, kazdy temat ma wlasny dzielnik. Payloady to
  * plaski JSON z jednostkami w nazwach pol, zeby dalo sie je pozniej wprost
@@ -113,23 +113,22 @@ static void drive_init(void)
     flora_motors_cfg_t mcfg = FLORA_MOTORS_DEFAULT_CFG();
     mcfg.left  = (flora_motor_cfg_t){ .pwm_gpio = FLORA_PIN_MOTOR_L_PWM,
                                       .dir_gpio = FLORA_PIN_MOTOR_L_DIR,
-                                      .invert   = false };
+                                      .invert   = FLORA_MOTOR_L_INVERT };
     mcfg.right = (flora_motor_cfg_t){ .pwm_gpio = FLORA_PIN_MOTOR_R_PWM,
                                       .dir_gpio = FLORA_PIN_MOTOR_R_DIR,
-                                      .invert   = true };
+                                      .invert   = FLORA_MOTOR_R_INVERT };
     if (flora_motors_init(&mcfg) != ESP_OK) {
         ESP_LOGW(TAG, "naped niedostepny");
         return;
     }
 
-    /* Wtyczki enkoderow sa zamienione wzgledem pinoutu - patrz bringup_drive.c. */
     flora_encoders_cfg_t ecfg = FLORA_ENCODERS_DEFAULT_CFG();
-    ecfg.left  = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_R_A,
-                                        .b_gpio = FLORA_PIN_ENC_R_B,
-                                        .invert = true };
-    ecfg.right = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_L_A,
+    ecfg.left  = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_L_A,
                                         .b_gpio = FLORA_PIN_ENC_L_B,
-                                        .invert = true };
+                                        .invert = FLORA_ENC_L_INVERT };
+    ecfg.right = (flora_encoder_cfg_t){ .a_gpio = FLORA_PIN_ENC_R_A,
+                                        .b_gpio = FLORA_PIN_ENC_R_B,
+                                        .invert = FLORA_ENC_R_INVERT };
     /* Srednice kol z NVS (cmd/wheel_cal), osobno dla kazdego kola. */
     hub_params_load();
     hub_params_t hp;
@@ -233,8 +232,11 @@ static void sensors_init(void)
 
     flora_sonar_cfg_t scfg = FLORA_SONAR_DEFAULT_CFG();
     scfg.trig_gpio    = FLORA_PIN_US_TRIG;
-    scfg.echo_gpio[0] = FLORA_PIN_US_ECHO_1;   /* jedyny podlaczony */
-    scfg.count        = 1;
+    /* Kolejnosc = zlacza na plytce: A (J8), B (J9), C (J10). */
+    scfg.echo_gpio[0] = FLORA_PIN_US_ECHO_1;
+    scfg.echo_gpio[1] = FLORA_PIN_US_ECHO_2;
+    scfg.echo_gpio[2] = FLORA_PIN_US_ECHO_3;
+    scfg.count        = 3;
     s_sonar_ok = (flora_sonar_init(&scfg) == ESP_OK);
     if (!s_sonar_ok) {
         ESP_LOGW(TAG, "dalmierz niedostepny");
@@ -410,15 +412,22 @@ static void pub_soil(void)
 
 static void pub_sonar(void)
 {
-    float mm = NAN;
-    if (flora_sonar_measure(0, &mm) != ESP_OK || mm == FLORA_SONAR_INVALID) {
-        mm = NAN;
+    /* Wspolny TRIG, wiec kazdy pomiar strzela wszystkimi czujnikami naraz,
+     * a czytamy jedno echo; odstep settle_ms w sterowniku rozdziela strzaly.
+     * Trzy pomiary to ~200-300 ms - przy publikacji co 500 ms sie miesci. */
+    char b[3][16];
+    for (int i = 0; i < 3; i++) {
+        float mm = NAN;
+        if (flora_sonar_measure(i, &mm) != ESP_OK || mm == FLORA_SONAR_INVALID) {
+            mm = NAN;
+        }
+        num(b[i], sizeof b[i], mm, 0);
     }
-    char b[16];
     /* Predkosc dzwieku wprost w telemetrii - widac, czy korekta
      * temperatury dziala (343 m/s przy 20 st C, 331 przy 0). */
-    flora_mqtt_publish_fmt("tele/sonar", 0, false, "{\"mm\":%s,\"sound_m_s\":%.1f}",
-                           num(b, sizeof b, mm, 0), flora_sonar_speed_of_sound());
+    flora_mqtt_publish_fmt("tele/sonar", 0, false,
+                           "{\"mm_a\":%s,\"mm_b\":%s,\"mm_c\":%s,\"sound_m_s\":%.1f}",
+                           b[0], b[1], b[2], flora_sonar_speed_of_sound());
 }
 
 /**

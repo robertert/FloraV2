@@ -27,6 +27,19 @@
 #define FLORA_PIN_ENC_R_A GPIO_NUM_17
 #define FLORA_PIN_ENC_R_B GPIO_NUM_18
 
+/* ---- Kierunki (docelowa plytka logiki) ----
+ * Jedno miejsce dla aplikacji i bringupow. Sprawdzenie po zmianie kabli:
+ *   cmd/drive_power "30 30"  -> robot jedzie DO PRZODU (strona masztu, +X),
+ *                               jesli do tylu - odwroc oba MOTOR_*_INVERT,
+ *                               jesli kreci sie w miejscu - odwroc jeden;
+ *   pchniecie recznie do przodu -> cnt_l i cnt_r w tele/drive rosna,
+ *                               jesli ktores maleje - odwroc jego ENC_*_INVERT;
+ *   kreci sie tylko lewe kolo -> zmienia sie cnt_l, nie cnt_r. */
+#define FLORA_MOTOR_L_INVERT true
+#define FLORA_MOTOR_R_INVERT false
+#define FLORA_ENC_L_INVERT   true
+#define FLORA_ENC_R_INVERT   true
+
 /* ---- I2C (INA226) ---- */
 #define FLORA_PIN_I2C_SDA GPIO_NUM_8
 #define FLORA_PIN_I2C_SCL GPIO_NUM_9

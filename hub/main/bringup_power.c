@@ -99,10 +99,10 @@ void bringup_power_run(i2c_master_bus_handle_t bus)
     flora_motors_cfg_t mcfg = FLORA_MOTORS_DEFAULT_CFG();
     mcfg.left  = (flora_motor_cfg_t){ .pwm_gpio = FLORA_PIN_MOTOR_L_PWM,
                                       .dir_gpio = FLORA_PIN_MOTOR_L_DIR,
-                                      .invert   = false };
+                                      .invert   = FLORA_MOTOR_L_INVERT };
     mcfg.right = (flora_motor_cfg_t){ .pwm_gpio = FLORA_PIN_MOTOR_R_PWM,
                                       .dir_gpio = FLORA_PIN_MOTOR_R_DIR,
-                                      .invert   = true };
+                                      .invert   = FLORA_MOTOR_R_INVERT };
     esp_err_t mret = flora_motors_init(&mcfg);
     if (mret != ESP_OK && mret != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "  nie udalo sie uruchomic napedu: %s", esp_err_to_name(mret));
