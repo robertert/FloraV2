@@ -23,10 +23,12 @@
 #include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -66,6 +68,8 @@ static flora_pwrsw_handle_t  s_mast;
 
 static bool s_drive_ok, s_pump_ok, s_soil_ok, s_sonar_ok, s_temp_ok;
 static bool temp_init(void);
+static void sonar_task(void *arg);
+static SemaphoreHandle_t s_sonar_lock;
 
 /** Powod ostatniego zakonczenia pompki; -1 gdy jeszcze nie pracowala. */
 static volatile int s_pump_last_reason = -1;
@@ -237,6 +241,11 @@ static void sensors_init(void)
     scfg.echo_gpio[2] = FLORA_PIN_US_ECHO_3;
     scfg.count        = 3;
     s_sonar_ok = (flora_sonar_init(&scfg) == ESP_OK);
+    if (s_sonar_ok) {
+        s_sonar_lock = xSemaphoreCreateMutex();
+        s_sonar_ok = s_sonar_lock &&
+                     xTaskCreate(sonar_task, "sonar", 3072, NULL, 3, NULL) == pdPASS;
+    }
     if (!s_sonar_ok) {
         ESP_LOGW(TAG, "dalmierz niedostepny");
     }
@@ -409,8 +418,37 @@ static void pub_soil(void)
                            raw, mv, num(b, sizeof b, pct, 1));
 }
 
+/* ================= DALMIERZE: POMIAR CIAGLY I FILTR =================
+ *
+ * Pomiar idzie we wlasnym zadaniu co SONAR_PERIOD_MS, a telemetria tylko
+ * publikuje wynik z ostatnich SONAR_WIN pomiarow (pomiar blokuje do ~250 ms,
+ * wiec w petli telemetrii opoznial wszystkie inne tematy).
+ *
+ * Dlaczego filtr: wiazka ma ~60-70 st. Maly, ukosny albo ruchomy cel daje
+ * za slabe echo i czujnik lapie cos dalej - na 70 cm pojawialo sie nagle
+ * 1000-1800 mm, a stale przedmioty w pokoju dawaly powtarzalne "drugie"
+ * odleglosci. Przy plaskim celu na wprost rozrzut to kilka mm.
+ *
+ * Publikujemy dwie liczby na czujnik:
+ *   mm_x   mediana - stabilna wartosc do pokazania, wycina pojedyncze skoki;
+ *          null, gdy w oknie mniej niz polowa pomiarow sie udala,
+ *   near_x minimum - ostrozna wartosc dla przyszlego weta napedu: przy
+ *          omijaniu przeszkod grozny jest odczyt za DALEKI, nie za bliski.
+ * st_x to status: "ok" gdy jest mediana, inaczej ostatni blad. */
+#define SONAR_N          3
+#define SONAR_WIN        5
+#define SONAR_PERIOD_MS  100
+
 /* Wybor dalmierza do testu: -1 wszystkie, 0..2 tylko A/B/C (cmd/sonar). */
 static volatile int s_sonar_sel = -1;
+
+typedef struct {
+    float     mm[SONAR_WIN];     /* NAN = pomiar nieudany */
+    esp_err_t last_err;
+    int       head, filled;
+} sonar_hist_t;
+
+static sonar_hist_t      s_sonar[SONAR_N];
 
 esp_err_t hub_telemetry_sonar_select(const char *arg)
 {
@@ -433,49 +471,102 @@ static const char *sonar_status(esp_err_t err)
     }
 }
 
+static void sonar_task(void *arg)
+{
+    TickType_t wake = xTaskGetTickCount();
+    int last_sel = -2;
+    for (;;) {
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(SONAR_PERIOD_MS));
+        const int sel = s_sonar_sel;
+
+        float mm[FLORA_SONAR_MAX_SENSORS];
+        esp_err_t res[FLORA_SONAR_MAX_SENSORS];
+        for (int i = 0; i < SONAR_N; i++) {
+            mm[i] = NAN;
+            res[i] = ESP_FAIL;
+        }
+        if (sel < 0) {
+            if (flora_sonar_measure_all(mm, res) != ESP_OK) {
+                continue;
+            }
+        } else {
+            res[sel] = flora_sonar_measure(sel, &mm[sel]);
+        }
+
+        xSemaphoreTake(s_sonar_lock, portMAX_DELAY);
+        if (sel != last_sel) {
+            /* Zmiana trybu testu - stare probki nie pasuja do nowego. */
+            memset(s_sonar, 0, sizeof s_sonar);
+            last_sel = sel;
+        }
+        for (int i = 0; i < SONAR_N; i++) {
+            if (sel >= 0 && sel != i) {
+                continue;
+            }
+            sonar_hist_t *h = &s_sonar[i];
+            h->mm[h->head] = (res[i] == ESP_OK && mm[i] != FLORA_SONAR_INVALID) ? mm[i] : NAN;
+            h->head = (h->head + 1) % SONAR_WIN;
+            if (h->filled < SONAR_WIN) h->filled++;
+            h->last_err = res[i];
+        }
+        xSemaphoreGive(s_sonar_lock);
+    }
+}
+
+static int cmp_float(const void *a, const void *b)
+{
+    float fa = *(const float *)a, fb = *(const float *)b;
+    return (fa > fb) - (fa < fb);
+}
+
 static void pub_sonar(void)
 {
-    /* Wspolny TRIG odpala wszystkie czujniki naraz, wiec w trybie "all"
-     * jeden strzal daje trzy wyniki. W tescie jednego czujnika mierzymy
-     * tylko jego (pozostale i tak strzelaja, ale ich nie czytamy).
-     *
-     * Status osobno, bo przy tescie znacza co innego: ok | echo (brak echa:
-     * nic przed czujnikiem albo martwy czujnik) | range (poza zakresem, np.
-     * za blisko) | busy (ECHO wciaz zajete poprzednim strzalem) | err |
-     * off (niemierzony). */
     const int sel = s_sonar_sel;
-    float mm[3] = { NAN, NAN, NAN };
-    esp_err_t res[3] = { ESP_FAIL, ESP_FAIL, ESP_FAIL };
-    if (sel < 0) {
-        float all[FLORA_SONAR_MAX_SENSORS];
-        esp_err_t r[FLORA_SONAR_MAX_SENSORS];
-        if (flora_sonar_measure_all(all, r) == ESP_OK) {
-            for (int i = 0; i < 3; i++) {
-                mm[i] = all[i];
-                res[i] = r[i];
+    float med[SONAR_N], near[SONAR_N];
+    const char *st[SONAR_N];
+
+    xSemaphoreTake(s_sonar_lock, portMAX_DELAY);
+    for (int i = 0; i < SONAR_N; i++) {
+        const sonar_hist_t *h = &s_sonar[i];
+        float ok[SONAR_WIN];
+        int n = 0;
+        for (int k = 0; k < h->filled; k++) {
+            if (!isnan(h->mm[k])) ok[n++] = h->mm[k];
+        }
+        med[i] = NAN;
+        near[i] = NAN;
+        if (n > 0) {
+            qsort(ok, n, sizeof ok[0], cmp_float);
+            near[i] = ok[0];
+            if (2 * n >= h->filled && h->filled > 0) {
+                med[i] = ok[n / 2];
             }
         }
-    } else {
-        res[sel] = flora_sonar_measure(sel, &mm[sel]);
-    }
-
-    char b[3][16];
-    const char *v[3];   /* num() przy NaN zwraca "null" i NIE pisze do bufora */
-    const char *st[3];
-    for (int i = 0; i < 3; i++) {
-        st[i] = (sel >= 0 && sel != i) ? "off" : sonar_status(res[i]);
-        if (res[i] != ESP_OK || mm[i] == FLORA_SONAR_INVALID) {
-            mm[i] = NAN;
+        if (sel >= 0 && sel != i) {
+            st[i] = "off";
+        } else if (h->filled == 0) {
+            st[i] = "err";
+        } else {
+            st[i] = !isnan(med[i]) ? "ok" : sonar_status(h->last_err);
         }
-        v[i] = num(b[i], sizeof b[i], mm[i], 0);
+    }
+    xSemaphoreGive(s_sonar_lock);
+
+    char b[2][SONAR_N][16];
+    const char *v[2][SONAR_N];   /* num() przy NaN zwraca "null" i NIE pisze do bufora */
+    for (int i = 0; i < SONAR_N; i++) {
+        v[0][i] = num(b[0][i], sizeof b[0][i], med[i], 0);
+        v[1][i] = num(b[1][i], sizeof b[1][i], near[i], 0);
     }
     /* Predkosc dzwieku wprost w telemetrii - widac, czy korekta
      * temperatury dziala (343 m/s przy 20 st C, 331 przy 0). */
     flora_mqtt_publish_fmt("tele/sonar", 0, false,
                            "{\"mm_a\":%s,\"mm_b\":%s,\"mm_c\":%s,"
+                           "\"near_a\":%s,\"near_b\":%s,\"near_c\":%s,"
                            "\"st_a\":\"%s\",\"st_b\":\"%s\",\"st_c\":\"%s\","
                            "\"sonar_sel\":\"%s\",\"sound_m_s\":%.1f}",
-                           v[0], v[1], v[2], st[0], st[1], st[2],
+                           v[0][0], v[0][1], v[0][2], v[1][0], v[1][1], v[1][2],
+                           st[0], st[1], st[2],
                            sel < 0 ? "all" : (const char *[]){ "a", "b", "c" }[sel],
                            flora_sonar_speed_of_sound());
 }

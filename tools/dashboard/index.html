@@ -236,7 +236,8 @@
       </div>
     </div>
     <p class="muted" style="margin: 8px 0 0; font-size: 12px">Zbliz dlon do czujnika - jego kafelek mignie.
-      Strefa martwa ponizej 20 cm daje "za blisko". Rozrzut = odchylenie z ostatnich 20 pomiarow.</p></section>
+      Strefa martwa ponizej 20 cm daje "za blisko". Rozrzut = odchylenie z ostatnich 20 publikacji.
+      Duza liczba to mediana z 5 pomiarow (0,5 s), "najblizej" to minimum z nich - tego uzyje straznik napedu.</p></section>
   <section class="card" data-topic="tele/temp"><h2>Temperatura <span class="age"></span></h2>
     <div class="kv"></div></section>
   <section class="card" data-topic="tele/water"><h2>Zbiornik <span class="age"></span></h2>
@@ -783,6 +784,10 @@ function sonarView(d) {
       const sd = Math.sqrt(h.reduce((a, b) => a + (b - mean) ** 2, 0) / h.length);
       $("sonar-" + k + "-stats").textContent = "min " + (Math.min(...h) / 10).toFixed(1) +
         "  max " + (Math.max(...h) / 10).toFixed(1) + "  rozrzut " + sd.toFixed(0) + " mm";
+    }
+    const near = d["near_" + k];
+    if (typeof near === "number") {
+      $("sonar-" + k + "-stats").textContent += "  najblizej " + (near / 10).toFixed(1);
     }
   }
   const sel = d.sonar_sel || "all";
