@@ -111,8 +111,11 @@ static esp_err_t try_connect(const char *ssid, const char *pass, const char *uri
 
     /* Nazwa .local rozwiazuje sie zapytaniem mDNS wbudowanym w lwIP
      * (CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES), bez osobnego komponentu. */
-    ESP_LOGI(TAG, "  czekam na brokera %s (do 10 s)...", uri);
-    for (int i = 0; i < 100 && !flora_mqtt_is_connected(); i++) {
+    /* 30 s, nie 10: gdy pierwsze podejscie ESP-MQTT nie wyjdzie, nastepne
+     * rusza dopiero po 10 s, a sam uscisk TLS trwa kolejne 2 s. Przy 10 s
+     * dzialajaca siec domowa byla porzucana tuz przed polaczeniem. */
+    ESP_LOGI(TAG, "  czekam na brokera %s (do 30 s)...", uri);
+    for (int i = 0; i < 300 && !flora_mqtt_is_connected(); i++) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
