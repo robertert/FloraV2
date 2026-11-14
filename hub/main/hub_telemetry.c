@@ -460,13 +460,14 @@ static void pub_sonar(void)
     }
 
     char b[3][16];
+    const char *v[3];   /* num() przy NaN zwraca "null" i NIE pisze do bufora */
     const char *st[3];
     for (int i = 0; i < 3; i++) {
         st[i] = (sel >= 0 && sel != i) ? "off" : sonar_status(res[i]);
         if (res[i] != ESP_OK || mm[i] == FLORA_SONAR_INVALID) {
             mm[i] = NAN;
         }
-        num(b[i], sizeof b[i], mm[i], 0);
+        v[i] = num(b[i], sizeof b[i], mm[i], 0);
     }
     /* Predkosc dzwieku wprost w telemetrii - widac, czy korekta
      * temperatury dziala (343 m/s przy 20 st C, 331 przy 0). */
@@ -474,7 +475,7 @@ static void pub_sonar(void)
                            "{\"mm_a\":%s,\"mm_b\":%s,\"mm_c\":%s,"
                            "\"st_a\":\"%s\",\"st_b\":\"%s\",\"st_c\":\"%s\","
                            "\"sonar_sel\":\"%s\",\"sound_m_s\":%.1f}",
-                           b[0], b[1], b[2], st[0], st[1], st[2],
+                           v[0], v[1], v[2], st[0], st[1], st[2],
                            sel < 0 ? "all" : (const char *[]){ "a", "b", "c" }[sel],
                            flora_sonar_speed_of_sound());
 }
