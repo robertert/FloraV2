@@ -53,6 +53,20 @@
   #robotlog .E { color: var(--bad); }
   #robotlog .W { color: var(--warn); }
   .muted { color: var(--muted); }
+  /* Dalmierze: trzy kafelki obok siebie, do testu po kolei. */
+  .sonars { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .sonar { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; transition: border-color .3s, background .3s; }
+  .sonar.off { opacity: .4; }
+  .sonar.flash { border-color: var(--accent); background: rgba(76, 154, 255, .12); }
+  .sonar .head { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .sonar .name { font-size: 16px; font-weight: bold; }
+  .sonar .where { font-size: 11px; color: var(--muted); }
+  .sonar .val { font-size: 30px; font-weight: bold; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .sonar .val small { font-size: 14px; font-weight: normal; color: var(--muted); }
+  .sonar .bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+  .sonar .bar div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .sonar .stats { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
 </style>
 </head>
 <body>
@@ -188,8 +202,40 @@
     <div class="kv"></div><canvas data-plot="tele/power:a"></canvas></section>
   <section class="card" data-topic="tele/soil"><h2>Gleba <span class="age"></span></h2>
     <div class="kv"></div><canvas data-plot="tele/soil:pct"></canvas></section>
-  <section class="card" data-topic="tele/sonar"><h2>Dalmierze <span class="age"></span></h2>
-    <div class="kv"></div><canvas data-plot="tele/sonar:mm_a,mm_b,mm_c"></canvas></section>
+  <section class="card wide" data-topic="tele/sonar"><h2>Dalmierze <span class="age"></span></h2>
+    <div class="row" style="margin: 0 0 8px">
+      test: <button id="sonar-all" data-sel="all">wszystkie</button>
+      <button data-sel="a">tylko A</button><button data-sel="b">tylko B</button><button data-sel="c">tylko C</button>
+      <span class="muted" id="sonar-sound"></span>
+    </div>
+    <div class="sonars">
+      <div class="sonar" id="sonar-a">
+        <div class="head"><span><span class="name">A</span> <span class="where">J8 / GPIO14</span></span>
+          <span class="pill" id="sonar-a-st">-</span></div>
+        <div class="val" id="sonar-a-val">-</div>
+        <div class="bar"><div id="sonar-a-bar"></div></div>
+        <div class="stats" id="sonar-a-stats">&nbsp;</div>
+        <canvas data-plot="tele/sonar:mm_a"></canvas>
+      </div>
+      <div class="sonar" id="sonar-b">
+        <div class="head"><span><span class="name">B</span> <span class="where">J9 / GPIO21</span></span>
+          <span class="pill" id="sonar-b-st">-</span></div>
+        <div class="val" id="sonar-b-val">-</div>
+        <div class="bar"><div id="sonar-b-bar"></div></div>
+        <div class="stats" id="sonar-b-stats">&nbsp;</div>
+        <canvas data-plot="tele/sonar:mm_b"></canvas>
+      </div>
+      <div class="sonar" id="sonar-c">
+        <div class="head"><span><span class="name">C</span> <span class="where">J10 / GPIO47</span></span>
+          <span class="pill" id="sonar-c-st">-</span></div>
+        <div class="val" id="sonar-c-val">-</div>
+        <div class="bar"><div id="sonar-c-bar"></div></div>
+        <div class="stats" id="sonar-c-stats">&nbsp;</div>
+        <canvas data-plot="tele/sonar:mm_c"></canvas>
+      </div>
+    </div>
+    <p class="muted" style="margin: 8px 0 0; font-size: 12px">Zbliz dlon do czujnika - jego kafelek mignie.
+      Strefa martwa ponizej 20 cm daje "za blisko". Rozrzut = odchylenie z ostatnich 20 pomiarow.</p></section>
   <section class="card" data-topic="tele/temp"><h2>Temperatura <span class="age"></span></h2>
     <div class="kv"></div></section>
   <section class="card" data-topic="tele/water"><h2>Zbiornik <span class="age"></span></h2>
@@ -373,7 +419,9 @@ function onMessage(topic, buf) {
   lastSeen[rel] = Date.now();
 
   const card = document.querySelector('.card[data-topic="' + rel + '"]');
-  if (card) { renderKv(card.querySelector(".kv"), data); }
+  const kv = card && card.querySelector(".kv");
+  if (kv) { renderKv(kv, data); }
+  if (rel === "tele/sonar") { sonarView(data); }
   if (rel === "tele/ota") { otaProgress(data); }
   if (rel === "config_drive") { pidConfig(data); }
 
@@ -683,6 +731,67 @@ if (location.protocol !== "https:" || ($("user").value && $("pass").value)) {
   connect();
 } else {
   setPill("conn", false, "broker: wpisz login i haslo, potem Polacz");
+}
+
+/* ---- dalmierze: kafelki z duza liczba, statusem i stabilnoscia ---- */
+const SONAR_ST = {
+  ok:    ["ok", "ok"],
+  echo:  ["brak echa", "bad"],
+  range: ["za blisko / za daleko", "warn"],
+  err:   ["blad", "bad"],
+  off:   ["nie mierzony", ""],
+};
+const SONAR_BAR_MM = 3000;       // pelny pasek = 3 m
+const SONAR_FLASH_MM = 80;       // skok, przy ktorym kafelek miga
+const sonarHist = { a: [], b: [], c: [] };
+const sonarFlashT = {};
+function sonarView(d) {
+  for (const k of ["a", "b", "c"]) {
+    const mm = d["mm_" + k], st = d["st_" + k] || (mm === null ? "echo" : "ok");
+    const [label, cls] = SONAR_ST[st] || [st, "bad"];
+    const pill = $("sonar-" + k + "-st");
+    pill.textContent = label;
+    pill.className = "pill " + cls;
+    $("sonar-" + k).classList.toggle("off", st === "off");
+
+    const h = sonarHist[k];
+    const val = $("sonar-" + k + "-val");
+    if (typeof mm === "number") {
+      const prev = h.length ? h[h.length - 1] : null;
+      if (prev !== null && Math.abs(mm - prev) > SONAR_FLASH_MM) {
+        const tile = $("sonar-" + k);
+        tile.classList.add("flash");
+        clearTimeout(sonarFlashT[k]);
+        sonarFlashT[k] = setTimeout(() => tile.classList.remove("flash"), 700);
+      }
+      h.push(mm);
+      if (h.length > 20) { h.shift(); }
+      val.innerHTML = (mm / 10).toFixed(1) + " <small>cm</small>";
+      $("sonar-" + k + "-bar").style.width = Math.min(100, (mm / SONAR_BAR_MM) * 100) + "%";
+    } else {
+      val.textContent = "-";
+      $("sonar-" + k + "-bar").style.width = "0";
+    }
+    if (h.length >= 3) {
+      const mean = h.reduce((a, b) => a + b, 0) / h.length;
+      const sd = Math.sqrt(h.reduce((a, b) => a + (b - mean) ** 2, 0) / h.length);
+      $("sonar-" + k + "-stats").textContent = "min " + (Math.min(...h) / 10).toFixed(1) +
+        "  max " + (Math.max(...h) / 10).toFixed(1) + "  rozrzut " + sd.toFixed(0) + " mm";
+    }
+  }
+  const sel = d.sonar_sel || "all";
+  for (const b of document.querySelectorAll("button[data-sel]")) {
+    b.classList.toggle("on", b.dataset.sel === sel);
+  }
+  if (typeof d.sound_m_s === "number") {
+    $("sonar-sound").textContent = "dzwiek " + d.sound_m_s.toFixed(1) + " m/s";
+  }
+}
+for (const b of document.querySelectorAll("button[data-sel]")) {
+  b.onclick = () => {
+    for (const k of ["a", "b", "c"]) { sonarHist[k].length = 0; }   // nowe statystyki dla testu
+    send("sonar", b.dataset.sel);
+  };
 }
 
 /* Wersja serwera z obrazu caddy (version.txt); przy otwarciu pliku

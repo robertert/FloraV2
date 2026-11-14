@@ -34,3 +34,9 @@ flora_ina226_handle_t hub_telemetry_ina(void);
 
 /** Czas pracy ostatniej dawki pompki [ms]; 0 gdy jeszcze nie pracowala. */
 uint32_t hub_telemetry_pump_last_ms(void);
+
+/**
+ * Wybor dalmierza do testu po kolei: "a" | "b" | "c" (tylko ten, co 200 ms)
+ * albo "all" (wszystkie, co 500 ms). Nie zapisywane - po restarcie "all".
+ */
+esp_err_t hub_telemetry_sonar_select(const char *arg);

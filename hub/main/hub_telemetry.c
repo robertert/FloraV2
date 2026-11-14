@@ -410,24 +410,55 @@ static void pub_soil(void)
                            raw, mv, num(b, sizeof b, pct, 1));
 }
 
+/* Wybor dalmierza do testu: -1 wszystkie, 0..2 tylko A/B/C (cmd/sonar). */
+static volatile int s_sonar_sel = -1;
+
+esp_err_t hub_telemetry_sonar_select(const char *arg)
+{
+    if (strcmp(arg, "all") == 0 || arg[0] == 0) { s_sonar_sel = -1; return ESP_OK; }
+    if ((arg[0] == 'a' || arg[0] == 'b' || arg[0] == 'c') && arg[1] == 0) {
+        s_sonar_sel = arg[0] - 'a';
+        return ESP_OK;
+    }
+    return ESP_ERR_INVALID_ARG;
+}
+
 static void pub_sonar(void)
 {
     /* Wspolny TRIG, wiec kazdy pomiar strzela wszystkimi czujnikami naraz,
      * a czytamy jedno echo; odstep settle_ms w sterowniku rozdziela strzaly.
-     * Trzy pomiary to ~200-300 ms - przy publikacji co 500 ms sie miesci. */
+     * Trzy pomiary to ~200-300 ms - przy publikacji co 500 ms sie miesci.
+     *
+     * Status osobno, bo przy tescie "brak echa" (nic przed czujnikiem albo
+     * martwy czujnik) i "poza zakresem" (za blisko, ponizej strefy martwej)
+     * znacza co innego: ok | echo | range | err | off (niemierzony). */
+    const int sel = s_sonar_sel;
     char b[3][16];
+    const char *st[3];
     for (int i = 0; i < 3; i++) {
         float mm = NAN;
-        if (flora_sonar_measure(i, &mm) != ESP_OK || mm == FLORA_SONAR_INVALID) {
-            mm = NAN;
+        if (sel >= 0 && sel != i) {
+            st[i] = "off";
+        } else {
+            esp_err_t err = flora_sonar_measure(i, &mm);
+            st[i] = err == ESP_OK                   ? "ok"
+                  : err == ESP_ERR_TIMEOUT          ? "echo"
+                  : err == ESP_ERR_INVALID_RESPONSE ? "range" : "err";
+            if (err != ESP_OK || mm == FLORA_SONAR_INVALID) {
+                mm = NAN;
+            }
         }
         num(b[i], sizeof b[i], mm, 0);
     }
     /* Predkosc dzwieku wprost w telemetrii - widac, czy korekta
      * temperatury dziala (343 m/s przy 20 st C, 331 przy 0). */
     flora_mqtt_publish_fmt("tele/sonar", 0, false,
-                           "{\"mm_a\":%s,\"mm_b\":%s,\"mm_c\":%s,\"sound_m_s\":%.1f}",
-                           b[0], b[1], b[2], flora_sonar_speed_of_sound());
+                           "{\"mm_a\":%s,\"mm_b\":%s,\"mm_c\":%s,"
+                           "\"st_a\":\"%s\",\"st_b\":\"%s\",\"st_c\":\"%s\","
+                           "\"sonar_sel\":\"%s\",\"sound_m_s\":%.1f}",
+                           b[0], b[1], b[2], st[0], st[1], st[2],
+                           sel < 0 ? "all" : (const char *[]){ "a", "b", "c" }[sel],
+                           flora_sonar_speed_of_sound());
 }
 
 /**
@@ -693,7 +724,8 @@ static void telemetry_task(void *arg)
         if (hub_nav_ready() && DUE(tick, 500)) { pub_pose(); }
         if (hub_nav_ready() && DUE(tick, 1000)) { pub_nav_sun(); }
         if (s_soil_ok && DUE(tick, 2000)) { pub_soil(); }
-        if (s_sonar_ok && DUE(tick, 500)) { pub_sonar(); }
+        /* Jeden czujnik w tescie: szybciej, zeby reakcja na dlon byla od razu. */
+        if (s_sonar_ok && DUE(tick, s_sonar_sel < 0 ? 500 : 200)) { pub_sonar(); }
         if (s_temp_ok) { temp_step(DUE(tick, 2000)); }
 
         if (s_level) {

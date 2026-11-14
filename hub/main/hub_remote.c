@@ -242,6 +242,7 @@ static void on_cmd(const char *topic, size_t topic_len,
     else if (strcmp(cmd, "drive_power") == 0) { err = cmd_drive_power(arg); }
     else if (strcmp(cmd, "pump") == 0)        { err = cmd_pump(arg); }
     else if (strcmp(cmd, "mast") == 0)        { err = cmd_mast(arg); }
+    else if (strcmp(cmd, "sonar") == 0)       { err = hub_telemetry_sonar_select(arg); }
     else if (strcmp(cmd, "pid_step") == 0)    { err = cmd_pid_step(arg); }
     else if (strcmp(cmd, "pose_reset") == 0)  { err = cmd_pose_reset(arg); }
     else if (strcmp(cmd, "mag_cal") == 0)     { err = hub_ota_in_progress() ? ESP_ERR_INVALID_STATE
