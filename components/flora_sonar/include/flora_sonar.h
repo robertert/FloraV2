@@ -17,7 +17,10 @@
  * Blizszy obiekt zwraca bledne wyniki albo brak echa - to cecha czujnika,
  * nie bledu kodu.
  *
- * ECHO pracuje na 5 V, wiec na wejsciu ESP32 musi byc dzielnik do 3,3 V.
+ * Na docelowej plytce czujniki sa zasilane z 3,3 V, wiec ECHO idzie wprost
+ * do ESP32. Przy zasilaniu 5 V potrzebny bylby dzielnik do 3,3 V.
+ * Wejscia ECHO maja wewnetrzne sciagniecie do masy - odpiety czujnik daje
+ * "brak echa" zamiast szumu z wiszacego w powietrzu pinu.
  */
 #pragma once
 

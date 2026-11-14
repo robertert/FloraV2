@@ -98,10 +98,14 @@ esp_err_t flora_sonar_init(const flora_sonar_cfg_t *cfg)
     gpio_config_t echo_io = {
         .pin_bit_mask = echo_mask,
         .mode         = GPIO_MODE_INPUT,
-        /* Sygnal przychodzi przez dzielnik z 5 V, jest aktywnie sterowany
-         * w obie strony - zadne podciagniecie nie jest potrzebne. */
+        /* Czujnik steruje ECHO aktywnie w obie strony, ale na plytce nie ma
+         * zadnego rezystora na tej linii. Odpiety czujnik zostawial wejscie
+         * w powietrzu, a przerwanie na obu zboczach lapalo z niego szum
+         * setki tysiecy razy na sekunde - bryla przestawala nadawac.
+         * Sciagniecie do masy (~45k) trzyma odpiete wejscie na 0, czyli
+         * "brak echa", a podpietemu czujnikowi nie przeszkadza. */
         .pull_up_en   = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
         .intr_type    = GPIO_INTR_ANYEDGE,
     };
     ESP_RETURN_ON_ERROR(gpio_config(&echo_io), TAG, "konfiguracja ECHO");
