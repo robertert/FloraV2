@@ -21,11 +21,15 @@
 #define FLORA_PIN_MOTOR_R_PWM GPIO_NUM_6
 #define FLORA_PIN_MOTOR_R_DIR GPIO_NUM_7
 
-/* ---- Enkodery Halla JGB37-520, 11 PPR na wale silnika ---- */
-#define FLORA_PIN_ENC_L_A GPIO_NUM_15
-#define FLORA_PIN_ENC_L_B GPIO_NUM_16
-#define FLORA_PIN_ENC_R_A GPIO_NUM_17
-#define FLORA_PIN_ENC_R_B GPIO_NUM_18
+/* ---- Enkodery Halla JGB37-520, 11 PPR na wale silnika ----
+ * Przypisanie do KOL, nie do opisu na plytce: na docelowej plytce lewe
+ * kolo siedzi na 17/18, prawe na 15/16. Ustalone 15.11.2026 z telemetrii
+ * (komenda + zyroskop glowicy + enkodery): przy 15/16 jako lewym jazda do
+ * przodu dawala -86 / +99 mm/s, a obrot w lewo -68 / -71. */
+#define FLORA_PIN_ENC_L_A GPIO_NUM_17
+#define FLORA_PIN_ENC_L_B GPIO_NUM_18
+#define FLORA_PIN_ENC_R_A GPIO_NUM_15
+#define FLORA_PIN_ENC_R_B GPIO_NUM_16
 
 /* ---- Kierunki (docelowa plytka logiki) ----
  * Jedno miejsce dla aplikacji i bringupow. Sprawdzenie po zmianie kabli:
@@ -38,7 +42,7 @@
 #define FLORA_MOTOR_L_INVERT true
 #define FLORA_MOTOR_R_INVERT false
 #define FLORA_ENC_L_INVERT   true
-#define FLORA_ENC_R_INVERT   true
+#define FLORA_ENC_R_INVERT   false
 
 /* ---- I2C (INA226) ---- */
 #define FLORA_PIN_I2C_SDA GPIO_NUM_8
