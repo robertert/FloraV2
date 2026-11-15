@@ -136,7 +136,7 @@ Deadman z panelu juz jest.
 Polecana kolejnosc: nagrywanie/odtwarzanie -> testy w CI -> DLI.
 
 ### Pod prace dyplomowa
-- **Nagrywanie i odtwarzanie przejazdow** - surowy strumien (enkodery,
+- ZROBIONE (0d66993): **Nagrywanie i odtwarzanie przejazdow** - surowy strumien (enkodery,
   ATTITUDE, tagi, slonce) na MQTT -> plik na serwerze; ten sam EKF
   (`flora_nav`, czysty C) puszczany na hoscie na nagraniu: strojenie Q/R,
   porownanie wariantow, wykresy bez wyjazdu w teren. Najcenniejsze.
@@ -151,9 +151,9 @@ Polecana kolejnosc: nagrywanie/odtwarzanie -> testy w CI -> DLI.
   stronie baterii, wiec bilans netto.
 
 ### Wygoda w rozwoju
-- **OTA dla glowicy i tagcamu** - bryla przekazuje obraz po UART
+- **OTA dla tagcamu** (glowica ma juz OTA przez wlasne WiFi, dacaa52) - bryla przekazuje obraz po UART
   kawalkami albo glowica wlacza wlasne WiFi na czas aktualizacji.
-- **Testy hostowe w CI** - `flora_pid`, `flora_nav`, `flora_heading`,
+- ZROBIONE (tools/host_tests.sh, .github/workflows/tests.yml): **Testy hostowe w CI** - `flora_pid`, `flora_nav`, `flora_heading`,
   `flora_ground` przy kazdym pushu.
 - **Zrzut przyczyny awarii** - coredump do flash, po restarcie skrot na
   MQTT (zadanie, adres, backtrace).

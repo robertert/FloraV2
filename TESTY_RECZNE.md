@@ -19,7 +19,7 @@ cd ../../flora_pid/host   # komenda na gorze test.c
 - [ ] Cofnac zmiany testowe w roboczym drzewie:
       `cfg.enable_magnetometer = false` w `node/main/bringup_head.c`
       i `TEST_BEZ_KAMERY 1` w `node/main/main.c`.
-- [ ] Wgrac RAZEM bryle i glowice. Zmienil sie znak `rate_z_cdps`
+- [x] Wgrac RAZEM bryle i glowice. Zmienil sie znak `rate_z_cdps`
       w ATTITUDE (teraz tempo kursu, dodatnie w prawo) i doszla komenda
       `FLORA_CMD_SET_STILL` - stara glowica z nowa bryla da zle wyniki.
 - [ ] Tagcam tez wgrac (nowa odleglosc do znacznika).
@@ -34,16 +34,16 @@ Stara kalibracja magnetometru jest celowo niewazna (nowy klucz NVS
 
 - [ ] **Offset zyro**: robot nieruchomo, `cmd/head_gyro_cal`. Log:
       "offset wyznaczony", wartosci rzedu ulamka st/s.
-- [ ] **Poziom**: `cmd/level_cal auto` (robot sam obraca sie o 180 st).
+- [x] **Poziom** (15.11: 2,05 / -5,09 st): `cmd/level_cal auto` (robot sam obraca sie o 180 st).
       Wynik na `head/level_cal`, przekrzywienie plytki kilka stopni max.
-- [ ] **Magnetometr**: z dala od samochodow i zbrojonego betonu,
+- [x] **Magnetometr** (15.11 w pokoju: off_z -45,1 uT, dip -66,5; powtorzyc na docelowym miejscu): z dala od samochodow i zbrojonego betonu,
       `cmd/mag_cal auto`. Na `head/mag_cal`: status 0, sektory >= 10/12,
       osie < 1,6, rozrzut < 5%, `off_z_ut` ok. -40 (zero AK09916 tego
       egzemplarza), `ref_dip_deg` ok. -66. Potem `head/mag`:
       `mag_disturbed false`, `field_h_ut` w 15% od `ref_h_ut`.
-- [ ] **Pochylosc**: klocek ~10 st pod kola z jednej strony, potem z przodu.
+- [ ] **Pochylosc** (15.11: pierwsze podlozenie 8 st -> kurs < 1 st; reszta z ruchem robota, powtorzyc bez przesuwania): klocek ~10 st pod kola z jednej strony, potem z przodu.
       Kurs zmienia sie o najwyzej ~2 st (bez poprawki z 15.11 bylo ~20).
-- [ ] **Kierunek kursu**: obrot robota o 90 st W PRAWO -> `heading`
+- [x] **Kierunek kursu**: obrot robota o 90 st W PRAWO -> `heading`
       rosnie o ~90. Jesli maleje - zly znak, NIE jechac dalej.
 - [ ] **Zgodnosc z kompasem**: telefon na robocie, 4 kierunki (N, E, S, W),
       roznica stala w granicach kilku stopni (staly offset to montaz -
@@ -79,9 +79,14 @@ Stara kalibracja magnetometru jest celowo niewazna (nowy klucz NVS
       rosnie, `n_rej` nie), `b_deg` ustawia sie od nowa.
 - [ ] **Nagranie**: `tools/rec/record.py --start`, przejazd, Ctrl+C.
       `tele/rec` `drops: 0`, w podsumowaniu `zgubionych 0`.
-- [ ] **Zgodnosc odtworzenia**: `replay` na nagraniu bez opcji - poza
-      wariantow na koncu taka sama jak ostatnia `tele/pose*` z robota
-      (rozne = rozjazd kodu robota i komputera, zglosic).
+- [ ] **Zgodnosc odtworzenia**: `cmd/rec on`, OD RAZU `cmd/pose_reset`
+      (replay startuje od zera, a robot z pozy z NVS - reset ustawia obie
+      strony tak samo), przejazd, `cmd/rec off`. `replay` bez opcji: poza
+      wariantow na koncu jak ostatnia `tele/pose*` z robota, w granicach
+      kilku mm (rozne = rozjazd kodu robota i komputera, zglosic).
+- [ ] **Zapamietywanie pozy**: przejazd, postoj > 3 s, restart bryly
+      (`cmd/reboot`). W logu "poza z NVS: ..." i `tele/pose` od tej pozy,
+      nie od (0, 0); po pierwszym kursie z glowicy `n_rej` nie rosnie.
 - [ ] **Kwadrat 5 x 5 m** (tasma na rogach), NAGRYWANY: blad zamkniecia
       wariantow `odom`, `head`, `full` z `replay --end "0 0"` - liczby do
       pracy. Powtorzyc na trawie. Potem strojenie na tych nagraniach
