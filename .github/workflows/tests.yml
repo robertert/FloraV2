@@ -1,0 +1,31 @@
+# Testy hostowe (czysty C, bez ESP-IDF) przy kazdym pushu i PR.
+# Ten sam skrypt co lokalnie: sh tools/host_tests.sh
+#
+# Pilnuje filtrow i matematyki, ktorych nie da sie sprawdzic na robocie
+# bez wyjazdu: EKF pozycji, kurs glowicy i kalibracja magnetometru,
+# regulator kol, nagranie -> odtworzenie (flora_navcore). Z AddressSanitizer
+# i UBSan. Firmware buduja osobne workflow (hub.yml, head.yml) na tagach.
+name: tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "components/**"
+      - "node/main/head_math.h"
+      - "tools/host_tests.sh"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    paths:
+      - "components/**"
+      - "node/main/head_math.h"
+      - "tools/host_tests.sh"
+      - ".github/workflows/tests.yml"
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testy hostowe
+        run: sh tools/host_tests.sh

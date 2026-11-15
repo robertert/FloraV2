@@ -233,6 +233,16 @@ znaczy czysto do konca zasiegu, a `-1` nieznane. Przelacznik `--grid` rysuje
 granice i numery wycinkow wprost na kadrze - bez tego trzeba liczyc wycinki
 palcem po ekranie. Sesje lezą w `tools/vision/data/` i NIE sa w repo.
 
+## Testy hostowe
+
+Filtry, kalibracje i regulator to czysty C - sprawdzane na komputerze, takze
+w CI przy kazdym pushu (`.github/workflows/tests.yml`), z AddressSanitizer
+i UBSan:
+
+```sh
+sh tools/host_tests.sh
+```
+
 ## Nagrywanie i odtwarzanie przejazdow (`tools/rec/`)
 
 Bryla na `cmd/rec on` wysyla na `rec/data` surowe wejscia nawigacji z kazdego
