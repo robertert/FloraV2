@@ -61,6 +61,13 @@ typedef struct {
 
 void flora_hkf_init(flora_hkf_t *kf, const flora_hkf_cfg_t *cfg, float psi0_deg, float sigma0_deg);
 
+/**
+ * Ustawia sam kurs od nowa (np. po kalibracji magnetometru albo gdy filtr
+ * dlugo nie zgadza sie z magnetometrem), zostawiajac oszacowany dryf b_z
+ * i jego niepewnosc. Zeruje korelacje kursu z dryfem.
+ */
+void flora_hkf_reset_heading(flora_hkf_t *kf, float psi_deg, float sigma_deg);
+
 /** Krok z zyroskopu. omega_dps - predkosc katowa wokol pionu (po offsecie z NVS). */
 void flora_hkf_predict(flora_hkf_t *kf, float omega_dps, float dt_s);
 

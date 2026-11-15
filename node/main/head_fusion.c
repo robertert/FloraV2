@@ -54,6 +54,13 @@ static const char *TAG = "fusion";
  * dostaje wtedy wieksza sigma, jak przy duzym przechyle. */
 #define MAG_MAX_G_DEV    0.05f
 
+/* Przestawienie kursu na magnetometr, gdy filtr dluzej nie zgadza sie
+ * z magnetometrem przy polu i inklinacji w normie. Stalowy przedmiot obok
+ * trasy daje niezgodnosc na kilka sekund; trwala oznacza, ze to filtr
+ * zbiegl do zlej wartosci (np. do niekalibrowanego magnetometru) i bez tego
+ * bramka trzymalaby go tam godzinami. */
+#define MAG_RESYNC_MS    30000
+
 /* --- ZUPT: dryf zyroskopu na postoju --- */
 #define ZUPT_SAMPLES       60     /**< 1 s przy 60 Hz */
 #define ZUPT_MAX_RATE_DPS  2.0f   /**< glowica nie moze sie obracac (np. recznie) */
@@ -100,6 +107,7 @@ static struct {
     flora_magdist_t dist;
     float     mag_h, mag_dip, mag_total;
     bool      collecting;
+    bool      resync_pending;   /**< po kalibracji: nastepny dobry pomiar ustawia kurs */
     int64_t   collect_end_us;
 
     /* poziom akcelerometru: przekrzywienie plytki na maszcie */
@@ -315,6 +323,10 @@ static void magcal_finish(void)
         s_f.mag_cal_ok = true;
         magcal_save(&cal);
         flora_magdist_set_ref(&s_f.dist, true, cal.h_ref_ut, cal.dip_ref_deg);
+        /* Kurs w filtrze pochodzi z poprzedniej (albo zadnej) kalibracji
+         * i moze sie roznic o dziesiatki stopni - bramka odrzucalaby wtedy
+         * kazdy nowy pomiar. Ustawiamy go od nowa pierwszym dobrym. */
+        s_f.resync_pending = true;
         ESP_LOGI(TAG, "kalibracja magnetometru OK: %u probek, %u/12 sektorow, osie %.2f, "
                       "rozrzut %.1f%%, hard iron (%.2f, %.2f, %.2f) uT",
                  rep.n, rep.sectors, rep.axis_ratio, rep.rms_pct, cal.ox, cal.oy, cal.oz);
@@ -505,6 +517,24 @@ static void mag_step(void)
                   flora_hkf_would_accept(&s_f.kf, s_f.mag_heading, sigma);
     bool disturbed = flora_magdist_step(&s_f.dist, MAG_PERIOD_MS, s_f.mag_h, s_f.mag_dip,
                                         s_f.mag_total, agrees);
+
+    /* Przestawienie kursu: po kalibracji albo po dlugiej niezgodnosci.
+     * Tylko gdy pole i inklinacja sa w normie - przy "zakloceniu" GYRO
+     * albo bez zadnego objawu (te sprawdzenia maja pierwszenstwo w magdist). */
+    bool field_ok = s_f.dist.cause == FLORA_MAGDIST_CAUSE_NONE ||
+                    s_f.dist.cause == FLORA_MAGDIST_CAUSE_GYRO;
+    bool stuck = s_f.dist.cause == FLORA_MAGDIST_CAUSE_GYRO &&
+                 s_f.dist.reject_ms_run >= MAG_RESYNC_MS;
+    if (s_f.state == HEAD_FUSION_RUN && field_ok && (s_f.resync_pending || stuck)) {
+        float jump = head_angle_diff(s_f.mag_heading, s_f.kf.psi);
+        ESP_LOGW(TAG, "kurs przestawiony na magnetometr o %.1f st (%s)", jump,
+                 s_f.resync_pending ? "po kalibracji" : "30 s niezgodnosci z filtrem");
+        flora_hkf_reset_heading(&s_f.kf, s_f.mag_heading, sigma);
+        flora_magdist_clear(&s_f.dist);
+        s_f.resync_pending = false;
+        s_f.mag_valid = true;
+        return;
+    }
     s_f.mag_valid = !disturbed;
 
     if (s_f.state == HEAD_FUSION_RUN && !disturbed) {

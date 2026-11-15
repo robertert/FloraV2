@@ -65,6 +65,9 @@ typedef struct {
 
 void flora_magdist_init(flora_magdist_t *d, const flora_magdist_cfg_t *cfg);
 
+/** Zapomina stan: flaga i liczniki od zera (po przestawieniu kursu). */
+void flora_magdist_clear(flora_magdist_t *d);
+
 /** Odniesienie z kalibracji; have=false gdy kalibracji brak. */
 void flora_magdist_set_ref(flora_magdist_t *d, bool have, float h_ref_ut, float dip_ref_deg);
 

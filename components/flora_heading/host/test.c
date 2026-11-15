@@ -280,6 +280,20 @@ int main(int argc, char **argv)
     check(!took && kf.n_rejected == rej0 + 1 && fabsf(diff180(kf.psi, 100.0f)) < 2.0f,
           "skok magnetometru o 40 st: odrzucony, kurs nietkniety");
 
+    /* Przestawienie kursu (po kalibracji / dlugiej niezgodnosci): kurs nowy,
+     * dryf zostaje, kolejny pomiar zgodny z nowym kursem przechodzi bramke. */
+    {
+        flora_hkf_t k;
+        flora_hkf_init(&k, &kcfg, 341.0f, 2.0f);
+        k.bz = 0.42f;
+        for (int i = 0; i < 600; i++) flora_hkf_predict(&k, 0.42f, dt);
+        bool before = flora_hkf_would_accept(&k, 60.0f, 4.0f);
+        flora_hkf_reset_heading(&k, 60.0f, 4.0f);
+        check(!before && fabsf(diff180(k.psi, 60.0f)) < 0.01f && fabsf(k.bz - 0.42f) < 1e-6f &&
+              flora_hkf_would_accept(&k, 61.0f, 4.0f),
+              "przestawienie kursu: nowy kurs, dryf zachowany, bramka znow przepuszcza");
+    }
+
     /* ================= ZAKLOCENIA ================= */
     printf("\nWykrywanie zaklocen:\n");
     flora_magdist_cfg_t dcfg = FLORA_MAGDIST_DEFAULT_CFG();
@@ -305,6 +319,9 @@ int main(int argc, char **argv)
     for (int i = 0; i < 6; i++) dist = flora_magdist_step(&md, 100, 19.0f, 66.0f, 47.0f, false);
     check(dist && md.cause == FLORA_MAGDIST_CAUSE_GYRO,
           "ponad 2 s niezgodnosci z zyro (pole w normie, ale obrocone): zaklocenie");
+
+    flora_magdist_clear(&md);
+    check(!md.disturbed && md.reject_ms_run == 0, "wyczyszczenie detektora: flaga i licznik od zera");
 
     flora_magdist_init(&md, &dcfg);
     dist = flora_magdist_step(&md, 100, 0, 0, 120.0f, true);

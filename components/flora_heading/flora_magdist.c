@@ -9,6 +9,14 @@ void flora_magdist_init(flora_magdist_t *d, const flora_magdist_cfg_t *cfg)
     d->cfg = *cfg;
 }
 
+void flora_magdist_clear(flora_magdist_t *d)
+{
+    d->disturbed     = false;
+    d->cause         = FLORA_MAGDIST_CAUSE_NONE;
+    d->reject_ms_run = 0;
+    d->good_ms       = 0;
+}
+
 void flora_magdist_set_ref(flora_magdist_t *d, bool have, float h_ref_ut, float dip_ref_deg)
 {
     d->have_ref = have && h_ref_ut > 0.0f;

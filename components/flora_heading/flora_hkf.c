@@ -26,6 +26,14 @@ void flora_hkf_init(flora_hkf_t *kf, const flora_hkf_cfg_t *cfg, float psi0_deg,
     kf->P[1][1] = cfg->sigma_b0 * cfg->sigma_b0;
 }
 
+void flora_hkf_reset_heading(flora_hkf_t *kf, float psi_deg, float sigma_deg)
+{
+    kf->psi = wrap360(psi_deg);
+    kf->P[0][0] = sigma_deg * sigma_deg;
+    kf->P[0][1] = kf->P[1][0] = 0.0f;
+    kf->reject_run = 0;
+}
+
 void flora_hkf_predict(flora_hkf_t *kf, float omega_dps, float dt_s)
 {
     if (dt_s <= 0.0f) {
