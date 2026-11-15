@@ -67,6 +67,26 @@ nie `ESP_ERR_NOT_FOUND` - fallback musi reagowac na kazdy blad.
 Piny AD/AC na plytce Adafruit to pomocnicza magistrala 1,8 V - nic do
 nich nie podlaczac.
 
+## Zasilanie masztu
+
+### Glowica raz startuje, raz nie, a UART do bryly daje same smieci
+Przetwornica XL masztu wchodzila w ograniczenie pradu (CC) i napiecie na
+ESP siadalo przy kazdym skoku poboru, najmocniej przy starcie WiFi.
+Objawy naraz:
+- glowica startuje co ktorys raz, `head/boot` z `reset power_on` bez
+  wylaczania robota, WiFi laczy sie i znika,
+- lacze z bryla miga `polaczona`/`rozlaczona`, w `head/link` bryly
+  `ok` prawie stoi, a w logu glowicy `lacze dol` sa tysiace `bajty`
+  przy kilku `odebrane` i prawie zerowych bledach,
+- przypadkowe bledy I2C (`VEML_E: ok -> podejrzany`, czujnik raz jest, raz nie).
+
+Co sprawdzic: miernik na wyjsciu XL w chwili startu glowicy (nie w
+spoczynku). Limit CC ustawic z duzym zapasem nad szczyt: samo ESP32-S3 przy
+starcie WiFi bierze chwilowo 350-500 mA, do tego tagcam z kamera i czujniki.
+
+Zanim zaczniesz szukac w kablu i firmware, wyklucz zasilanie - przy zbyt
+niskim napieciu wszystko wyglada jak usterka okablowania.
+
 ## Lacze glowica <-> tagcam
 
 ### Brak `modul znacznikow: polaczony` w logu glowicy
