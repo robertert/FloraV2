@@ -25,7 +25,7 @@ static const char *TAG = "fusion";
 #define LOOP_HZ        60
 #define LOOP_MS        (1000 / LOOP_HZ)
 #define MAG_DIVIDER    6     /**< magnetometr 10 Hz; korekta dryfu nie musi byc szybsza */
-#define MAG_PERIOD_MS  (MAG_DIVIDER * LOOP_MS)
+#define MAG_PERIOD_MS  (MAG_DIVIDER * 1000 / LOOP_HZ)   /* 100, nie 6 * 16 = 96 */
 #define ATT_DIVIDER    3     /**< ATTITUDE 20 Hz, zgodnie z kontraktem */
 #define INFO_DIVIDER   LOOP_HZ   /**< MAG_INFO 1 Hz */
 
@@ -618,13 +618,31 @@ static void send_mag_info(void)
 
 /* ================= PETLA ================= */
 
+/* Takt z esp_timer, nie z vTaskDelayUntil: zegar FreeRTOS ma 100 Hz, wiec
+ * pdMS_TO_TICKS(16) to 1 takt = 10 ms i petla szla 100 Hz zamiast 60.
+ * Timer daje dokladnie 1/60 s niezaleznie od CONFIG_FREERTOS_HZ. */
+static void loop_tick(void *arg)
+{
+    xTaskNotifyGive((TaskHandle_t)arg);
+}
+
 static void fusion_task(void *arg)
 {
-    TickType_t next = xTaskGetTickCount();
     s_f.last_us = esp_timer_get_time();
 
+    esp_timer_handle_t timer;
+    const esp_timer_create_args_t targs = {
+        .callback = loop_tick,
+        .arg      = xTaskGetCurrentTaskHandle(),
+        .name     = "fusion_tick",
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&targs, &timer));
+    ESP_ERROR_CHECK(esp_timer_start_periodic(timer, 1000000 / LOOP_HZ));
+
     while (1) {
-        vTaskDelayUntil(&next, pdMS_TO_TICKS(LOOP_MS));
+        /* pdTRUE: przy spoznieniu zbiera zalegle takty w jeden - petla
+         * nie nadrabia seria, tylko liczy dalej z prawdziwym dt. */
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         s_f.tick++;
 
         /* Komendy zmieniajace tempo obslugujemy niezaleznie od stanu. */

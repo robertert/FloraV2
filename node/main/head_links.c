@@ -92,6 +92,10 @@ esp_err_t head_links_init(void)
     down.size_of       = flora_msgs_payload_size;
     down.ack_type      = FLORA_MSG_ACK;
     down.on_state      = on_down_state;
+    /* Bryla nadaje w dol rzadko: SET_STILL co ok. 1 s i TIME_SYNC co 10 s.
+     * Przy domyslnej 1 s ciszy kazde male opoznienie dawalo "rozlaczona",
+     * a po nim nowe HELLO co 20-40 s. */
+    down.peer_timeout_ms = 3000;
 
     esp_err_t ret = flora_link_init(&down, &s_down);
     if (ret != ESP_OK) {
