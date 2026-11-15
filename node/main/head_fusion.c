@@ -830,16 +830,3 @@ head_fusion_state_t head_fusion_state(void)  { return s_f.state; }
 float    head_fusion_heading(void)           { return s_f.kf.psi; }
 bool     head_fusion_heading_valid(void)     { return s_f.heading_valid; }
 uint32_t head_fusion_errors(void)            { return s_f.errors; }
-
-void head_fusion_debug(float accel_g[3], float gyro_dps[3], float *pitch_deg,
-                       float *roll_deg)
-{
-    /* Bez blokady: czytamy z innego zadania i moze trafic sie mieszanka
-     * dwoch kolejnych probek. Do podgladu w logu to bez znaczenia. */
-    for (int i = 0; i < 3; i++) {
-        accel_g[i]  = s_f.last.accel_g[i];
-        gyro_dps[i] = s_f.last.gyro_dps[i];
-    }
-    *pitch_deg = s_f.att.pitch_deg;
-    *roll_deg  = s_f.att.roll_deg;
-}
