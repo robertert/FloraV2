@@ -188,9 +188,22 @@
 #define FLORA_HEAD_NVS_MAG_W11   "mag_w11"
 #define FLORA_HEAD_NVS_MAG_HREF  "mag_href"
 #define FLORA_HEAD_NVS_MAG_DIP   "mag_dip"
-/* Nowy klucz po przemapowaniu osi magnetometru: kalibracja zapisana
- * w starych osiach ("mag_cal_ok") jest niewazna i nie moze sie wczytac. */
-#define FLORA_HEAD_NVS_MAG_OK    "mag_cal_ok2"
+#define FLORA_HEAD_NVS_MAG_OZ    "mag_oz"
+/* Klucz "kalibracja wazna" zmienia sie razem z modelem, zeby stara nie
+ * wczytala sie po aktualizacji: "mag_cal_ok" - stare osie AK09916,
+ * "mag_cal_ok2" - 2D na surowych x, y (bez oz, przeciek przechylu),
+ * "mag_cal_ok3" - hard iron 3D z inklinacji miejsca (flora_magcal.h). */
+#define FLORA_HEAD_NVS_MAG_OK    "mag_cal_ok3"
+
+/**
+ * Inklinacja magnetyczna miejsca pracy [st], dodatnia. Z niej kalibracja
+ * wylicza pionowe przesuniecie zera magnetometru (flora_magcal.h).
+ * Musi byc dokladna do ~0,5 st: 1 st bledu to ~2 st kursu na 10 st
+ * pochylosci. TYMCZASOWO Krakow - podmienic na wartosc z kalkulatora
+ * NOAA (https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml,
+ * pole "Inclination") dla wspolrzednych ogrodu, jak deklinacje w bryle.
+ */
+#define FLORA_HEAD_MAG_INCL_DEG  66.5f
 /* Poziom akcelerometru: przekrzywienie plytki wzgledem masztu [st]. */
 #define FLORA_HEAD_NVS_LVL_PITCH "lvl_pitch"
 #define FLORA_HEAD_NVS_LVL_ROLL  "lvl_roll"

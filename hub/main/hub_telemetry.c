@@ -797,10 +797,12 @@ static void pub_head(bool attitude_due)
     if (hub_links_get(FLORA_MSG_MAG_CAL_RESULT, &mc, sizeof mc, &seq_magcal)) {
         flora_mqtt_publish_fmt("head/mag_cal", 1, true,
                                "{\"cal_status\":%u,\"sectors\":%u,\"samples\":%u,"
-                               "\"off_x_ut\":%.2f,\"off_y_ut\":%.2f,\"axis_ratio\":%.3f,"
+                               "\"off_x_ut\":%.2f,\"off_y_ut\":%.2f,\"off_z_ut\":%.2f,"
+                               "\"axis_ratio\":%.3f,"
                                "\"rms_pct\":%.2f,\"ref_h_ut\":%.2f,\"ref_dip_deg\":%.2f}",
                                mc.status, mc.sectors, mc.samples,
                                mc.offset_x_cut / 100.0f, mc.offset_y_cut / 100.0f,
+                               mc.offset_z_cut / 100.0f,
                                mc.axis_ratio_milli / 1000.0f, mc.rms_cpct / 100.0f,
                                mc.field_h_cut / 100.0f, mc.dip_cdeg / 100.0f);
     }

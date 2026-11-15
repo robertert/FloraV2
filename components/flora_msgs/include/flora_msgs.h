@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 /** Wersja kontraktu. Podbij przy zmianie ukladu ktorejkolwiek struktury. */
-#define FLORA_MSGS_VERSION 4
+#define FLORA_MSGS_VERSION 5
 
 /** Typy wiadomosci. Wartosci jawne, bo ida po kablu. */
 typedef enum {
@@ -217,6 +217,7 @@ typedef struct __attribute__((packed)) {
     uint16_t rms_cpct;         /**< rozrzut po korekcji, setne procenta */
     uint16_t field_h_cut;      /**< pole poziome odniesienia, setne uT */
     int16_t  dip_cdeg;         /**< inklinacja odniesienia */
+    int16_t  offset_z_cut;     /**< hard iron Z (z inklinacji miejsca), setne uT; od v5 */
 } flora_mag_cal_result_t;
 
 /** Wynik kroku kalibracji poziomu akcelerometru. */
@@ -321,7 +322,7 @@ _Static_assert(sizeof(flora_tag_t)         ==  8, "flora_tag_t: podbij FLORA_MSG
 _Static_assert(sizeof(flora_tags_t)        == 40, "flora_tags_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_cam_status_t)  == 12, "flora_cam_status_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_mag_info_t)    == 16, "flora_mag_info_t: podbij FLORA_MSGS_VERSION");
-_Static_assert(sizeof(flora_mag_cal_result_t) == 16, "flora_mag_cal_result_t: podbij FLORA_MSGS_VERSION");
+_Static_assert(sizeof(flora_mag_cal_result_t) == 18, "flora_mag_cal_result_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_level_cal_result_t) == 10, "flora_level_cal_result_t: podbij FLORA_MSGS_VERSION");
 
 /**

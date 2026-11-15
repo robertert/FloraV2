@@ -81,36 +81,64 @@ static void body_vectors(float psi, float q, float r, float m[3], float a[3])
 }
 
 /* ---- model znieksztalcen ----
- * Pole poziome 19 uT (Krakow), inklinacja 66 st -> pionowa ~43 uT.
- * Hard iron (12, -7) uT, soft iron: splaszczenie 1,25 pod katem 30 st. */
+ * Pole Ziemi z body_vectors: 19 uT poziomo, 43 uT w dol (inklinacja 66,2 st).
+ * Hard iron w osiach plytki (12, -7, -40) uT - Z jak zmierzone na glowicy
+ * 15.11.2026 (zero AK09916), soft iron w poziomie: splaszczenie 1,25 pod
+ * katem 30 st. */
 #define H_TRUE   19.0f
 #define V_TRUE   43.0f
 #define HI_X     12.0f
 #define HI_Y     -7.0f
+#define HI_Z    -40.0f
+#define DIP_SITE R2D(atan2f(V_TRUE, H_TRUE))
 
-static void distort(float hx, float hy, float *mx, float *my)
+/** Pomiar magnetometru i przechyl plytki przy kursie psi i przechylu (q, r). */
+static void measure(float psi, float q, float r, rng_t *rng, float noise,
+                    float m[3], float *pitch, float *roll)
 {
-    const float a = D2R(30.0f), k = 1.25f;
-    float c = cosf(a), s = sinf(a);
-    /* S = R diag(k, 1/k) R' */
+    float e[3], a[3];
+    body_vectors(psi, q, r, e, a);
+    const float k = 1.25f, ang = D2R(30.0f);
+    float c = cosf(ang), s = sinf(ang);
     float s00 = k * c * c + s * s / k, s01 = (k - 1.0f / k) * c * s, s11 = k * s * s + c * c / k;
-    *mx = s00 * hx + s01 * hy + HI_X;
-    *my = s01 * hx + s11 * hy + HI_Y;
+    m[0] = s00 * e[0] + s01 * e[1] + HI_X + (rng ? rnd_n(rng, noise) : 0.0f);
+    m[1] = s01 * e[0] + s11 * e[1] + HI_Y + (rng ? rnd_n(rng, noise) : 0.0f);
+    m[2] = e[2] + HI_Z + (rng ? rnd_n(rng, noise) : 0.0f);
+    head_attitude_t at = head_attitude_from_accel(a);
+    *pitch = at.pitch_deg;
+    *roll  = at.roll_deg;
 }
 
-/** Kurs z pola w osiach czujnika: atan2(y, x), jak w head_heading_tilt_compensated. */
-static float heading_of(float x, float y)
+/** Obrot w miejscu: plytka przechylona o 5,7 st, kolysanie +-1,5 st. */
+static void collect(flora_magcal_collector_t *col, float turns, int n, rng_t *rng)
 {
-    float h = R2D(atan2f(y, x));
-    return h < 0 ? h + 360.0f : h;
+    flora_magcal_begin(col);
+    for (int i = 0; i < n; i++) {
+        float psi = 360.0f * turns * i / n;
+        float q = 0.5f + 1.5f * sinf(D2R(psi * 3.0f));
+        float r = 5.7f + 1.5f * cosf(D2R(psi * 2.0f));
+        float m[3], p, rr;
+        measure(psi, q, r, rng, 0.3f, m, &p, &rr);
+        flora_magcal_add(col, m, p, rr);
+    }
 }
 
-/** Pole poziome widziane przy kursie glowicy psi (CW od N): czujnik obrocony o psi. */
-static void field_at(float psi_deg, float *hx, float *hy)
+/** Najwiekszy blad kursu przy przechylu (q, r) wzgledem kursu na plasko przy psi=0
+ *  (staly kat od soft iron przechodzi do b w EKF bryly i nie szkodzi). */
+static float worst_heading(const flora_magcal_t *cal, float q, float r)
 {
-    /* Kurs psi = atan2(my, mx), wiec pole w osiach czujnika ma kat psi. */
-    *hx = H_TRUE * cosf(D2R(psi_deg));
-    *hy = H_TRUE * sinf(D2R(psi_deg));
+    float m[3], p, rr;
+    flora_magcal_out_t o0, o;
+    measure(0.0f, 0.0f, 0.0f, NULL, 0, m, &p, &rr);
+    flora_magcal_apply(cal, m, p, rr, &o0);
+    float worst = 0.0f;
+    for (int i = 0; i < 360; i += 15) {
+        measure((float)i, q, r, NULL, 0, m, &p, &rr);
+        flora_magcal_apply(cal, m, p, rr, &o);
+        float e = fabsf(diff180(o.heading_deg - o0.heading_deg, (float)i));
+        if (e > worst) worst = e;
+    }
+    return worst;
 }
 
 static flora_magcal_collector_t s_col;
@@ -121,73 +149,98 @@ int main(int argc, char **argv)
     rng_t rng = { 4242 };
 
     /* ================= KALIBRACJA ================= */
-    flora_magcal_begin(&s_col);
-    for (int i = 0; i < 400; i++) {
-        float psi = 720.0f * i / 400.0f;   /* dwa obroty */
-        float hx, hy, mx, my;
-        field_at(psi, &hx, &hy);
-        distort(hx, hy, &mx, &my);
-        flora_magcal_add(&s_col, mx + rnd_n(&rng, 0.3f), my + rnd_n(&rng, 0.3f), V_TRUE);
-    }
+    collect(&s_col, 2.0f, 400, &rng);
     flora_magcal_t cal;
     flora_magcal_identity(&cal);
-    flora_magcal_report_t rep = flora_magcal_fit(&s_col, &cal);
+    flora_magcal_report_t rep = flora_magcal_fit(&s_col, DIP_SITE, &cal);
 
     if (csv) {
         printf("x,y,x_kal,y_kal\n");
         for (int i = 0; i < s_col.n; i++) {
-            float cx, cy;
-            flora_magcal_apply(&cal, s_col.x[i], s_col.y[i], &cx, &cy);
-            printf("%.2f,%.2f,%.2f,%.2f\n", s_col.x[i], s_col.y[i], cx, cy);
+            float m[3] = { s_col.x[i], s_col.y[i], s_col.z[i] };
+            flora_magcal_out_t o;
+            flora_magcal_apply(&cal, m, s_col.pitch[i], s_col.roll[i], &o);
+            printf("%.2f,%.2f,%.2f,%.2f\n", m[0], m[1], o.h_ut * cosf(D2R(o.heading_deg)),
+                   o.h_ut * sinf(D2R(o.heading_deg)));
         }
         return 0;
     }
 
-    printf("Kalibracja: %s, %u probek, %u/12 sektorow, osie %.2f, rozrzut %.2f%%\n",
+    printf("Kalibracja (plytka przechylona 5,7 st, kolysanie +-1,5 st):\n");
+    printf("  %s, %u probek, %u/12 sektorow, osie %.2f, rozrzut %.2f%%\n",
            flora_magcal_status_name(rep.status), rep.n, rep.sectors, rep.axis_ratio, rep.rms_pct);
-    printf("  hard iron (%.2f, %.2f) uT [prawda (%.1f, %.1f)], pole %.2f uT, inklinacja %.1f st\n",
-           cal.ox, cal.oy, HI_X, HI_Y, cal.h_ref_ut, cal.dip_ref_deg);
+    printf("  hard iron (%.2f, %.2f, %.2f) uT [prawda (%.0f, %.0f, %.0f)], pole %.2f uT, inklinacja %.1f st\n",
+           cal.ox, cal.oy, cal.oz, HI_X, HI_Y, HI_Z, cal.h_ref_ut, cal.dip_ref_deg);
     check(rep.status == FLORA_MAGCAL_OK, "dwa obroty z szumem: kalibracja udana");
-    check(fabsf(cal.ox - HI_X) < 0.3f && fabsf(cal.oy - HI_Y) < 0.3f, "hard iron odzyskany (< 0,3 uT)");
+    check(fabsf(cal.ox - HI_X) < 0.5f && fabsf(cal.oy - HI_Y) < 0.5f, "hard iron x, y odzyskany (< 0,5 uT)");
+    check(fabsf(cal.oz - HI_Z) < 2.0f, "hard iron z z inklinacji miejsca (< 2 uT)");
     check(fabsf(rep.axis_ratio - 1.5625f) < 0.05f, "splaszczenie odzyskane (1,25^2 = 1,56)");
-    check(fabsf(cal.dip_ref_deg - R2D(atan2f(V_TRUE, cal.h_ref_ut))) < 0.1f, "inklinacja odniesienia policzona");
+    check(fabsf(cal.dip_ref_deg + DIP_SITE) < 1.0f, "inklinacja odniesienia ~ -inklinacja miejsca");
 
-    /* Blad kursu przed i po: soft iron obraca kat, wiec porownujemy
-     * zmiane kursu wzgledem pierwszego punktu (staly offset kata przechodzi
-     * do b w EKF bryly i nie szkodzi). */
-    float worst_raw = 0, worst_cal = 0;
-    float raw0 = 0, cal0 = 0;
-    for (int i = 0; i <= 360; i += 5) {
-        float hx, hy, mx, my, cx, cy;
-        field_at((float)i, &hx, &hy);
-        distort(hx, hy, &mx, &my);
-        flora_magcal_apply(&cal, mx, my, &cx, &cy);
-        float raw = heading_of(mx, my), kal = heading_of(cx, cy);
-        if (i == 0) { raw0 = raw; cal0 = kal; continue; }
-        float er = fabsf(diff180(raw - raw0, (float)i));
-        float ec = fabsf(diff180(kal - cal0, (float)i));
-        if (er > worst_raw) worst_raw = er;
-        if (ec > worst_cal) worst_cal = ec;
+    /* Pole poziome po kalibracji przy tym samym przechyle (blad z 15.11:
+     * 7-9 uT zamiast 15,4, bo przeciek z Z byl odejmowany dwa razy). */
+    float h_worst = 0.0f;
+    for (int i = 0; i < 360; i += 30) {
+        float m[3], p, rr;
+        flora_magcal_out_t o;
+        measure((float)i, 0.5f, 5.7f, NULL, 0, m, &p, &rr);
+        flora_magcal_apply(&cal, m, p, rr, &o);
+        float d = fabsf(o.h_ut / cal.h_ref_ut - 1.0f);
+        if (d > h_worst) h_worst = d;
     }
-    printf("  najgorszy blad kursu: bez kalibracji %.1f st, po kalibracji %.2f st\n", worst_raw, worst_cal);
-    check(worst_raw > 20.0f && worst_cal < 1.0f, "kalibracja zbija blad kursu z kilkudziesieciu st do < 1 st");
+    printf("  pole poziome po kalibracji, ten sam przechyl: odchylka do %.1f%% (magdist: 15%%)\n",
+           100.0f * h_worst);
+    check(h_worst < 0.05f, "pole poziome po kalibracji zgodne z odniesieniem (< 5%)");
+
+    flora_magcal_t no_cal;
+    flora_magcal_identity(&no_cal);
+    flora_magcal_t no_oz = cal;
+    no_oz.oz = 0.0f;   /* jak stary model: Z nieskorygowane */
+    float flat_raw = worst_heading(&no_cal, 0, 0), flat = worst_heading(&cal, 0, 0);
+    float slope = 0.0f, slope_no_oz = 0.0f;
+    const float slopes[][2] = { { 10, 0 }, { -10, 0 }, { 0, 10 }, { 0, -10 }, { 7, -7 } };
+    for (size_t i = 0; i < sizeof slopes / sizeof slopes[0]; i++) {
+        float a = worst_heading(&cal, slopes[i][0], slopes[i][1]);
+        float b = worst_heading(&no_oz, slopes[i][0], slopes[i][1]);
+        if (a > slope) slope = a;
+        if (b > slope_no_oz) slope_no_oz = b;
+    }
+    printf("  blad kursu na plasko: bez kalibracji %.1f st, po kalibracji %.2f st\n", flat_raw, flat);
+    printf("  na pochylosci 10 st: po kalibracji %.2f st, bez oz (stary model) %.1f st\n",
+           slope, slope_no_oz);
+    check(flat_raw > 20.0f && flat < 1.0f, "kalibracja zbija blad kursu z kilkudziesieciu st do < 1 st");
+    check(slope < 1.5f, "pochylosc 10 st: blad kursu < 1,5 st");
+    check(slope_no_oz > 10.0f, "bez oz na tej samej pochylosci > 10 st (sprawdzenie testu)");
+
+    /* Inklinacja miejsca wpisana nie tak: jak bardzo to szkodzi. */
+    const float dip_err[] = { 0.5f, 2.0f };
+    float slope_err[2];
+    for (int k = 0; k < 2; k++) {
+        flora_magcal_t cal2;
+        flora_magcal_identity(&cal2);
+        flora_magcal_fit(&s_col, DIP_SITE + dip_err[k], &cal2);
+        slope_err[k] = 0.0f;
+        for (size_t i = 0; i < sizeof slopes / sizeof slopes[0]; i++) {
+            float a = worst_heading(&cal2, slopes[i][0], slopes[i][1]);
+            if (a > slope_err[k]) slope_err[k] = a;
+        }
+        printf("  inklinacja miejsca o %.1f st obok: oz %.1f uT, na pochylosci 10 st %.2f st\n",
+               dip_err[k], cal2.oz, slope_err[k]);
+    }
+    check(slope_err[0] < 1.5f, "inklinacja o 0,5 st obok: pochylosc 10 st < 1,5 st");
+    check(slope_err[1] < 6.0f && slope_err[1] < slope_no_oz / 3.0f,
+          "inklinacja o 2 st obok: nadal kilka razy lepiej niz bez oz");
 
     /* Pol obrotu - za malo, zeby wyznaczyc elipse. */
-    flora_magcal_begin(&s_col);
-    for (int i = 0; i < 300; i++) {
-        float hx, hy, mx, my;
-        field_at(180.0f * i / 300.0f, &hx, &hy);
-        distort(hx, hy, &mx, &my);
-        flora_magcal_add(&s_col, mx + rnd_n(&rng, 0.3f), my + rnd_n(&rng, 0.3f), V_TRUE);
-    }
+    collect(&s_col, 0.5f, 300, &rng);
     flora_magcal_t untouched = cal;
-    rep = flora_magcal_fit(&s_col, &untouched);
+    rep = flora_magcal_fit(&s_col, DIP_SITE, &untouched);
     check(rep.status != FLORA_MAGCAL_OK && memcmp(&untouched, &cal, sizeof cal) == 0,
           "pol obrotu: odrzucone, poprzednia kalibracja nietknieta");
 
-    flora_magcal_begin(&s_col);
-    for (int i = 0; i < 50; i++) flora_magcal_add(&s_col, (float)i, (float)i, 0);
-    check(flora_magcal_fit(&s_col, &untouched).status == FLORA_MAGCAL_TOO_FEW, "za malo probek: odrzucone");
+    collect(&s_col, 2.0f, 50, &rng);
+    check(flora_magcal_fit(&s_col, DIP_SITE, &untouched).status == FLORA_MAGCAL_TOO_FEW,
+          "za malo probek: odrzucone");
 
     /* ================= KALMAN KURSU ================= */
     printf("\nKalman kursu:\n");
