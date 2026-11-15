@@ -38,7 +38,11 @@ Stara kalibracja magnetometru jest celowo niewazna (nowy klucz NVS
       Wynik na `head/level_cal`, przekrzywienie plytki kilka stopni max.
 - [ ] **Magnetometr**: z dala od samochodow i zbrojonego betonu,
       `cmd/mag_cal auto`. Na `head/mag_cal`: status 0, sektory >= 10/12,
-      osie < 1,6, rozrzut < 5%.
+      osie < 1,6, rozrzut < 5%, `off_z_ut` ok. -40 (zero AK09916 tego
+      egzemplarza), `ref_dip_deg` ok. -66. Potem `head/mag`:
+      `mag_disturbed false`, `field_h_ut` w 15% od `ref_h_ut`.
+- [ ] **Pochylosc**: klocek ~10 st pod kola z jednej strony, potem z przodu.
+      Kurs zmienia sie o najwyzej ~2 st (bez poprawki z 15.11 bylo ~20).
 - [ ] **Kierunek kursu**: obrot robota o 90 st W PRAWO -> `heading`
       rosnie o ~90. Jesli maleje - zly znak, NIE jechac dalej.
 - [ ] **Zgodnosc z kompasem**: telefon na robocie, 4 kierunki (N, E, S, W),

@@ -11,6 +11,76 @@
   SCL lezy obok GND w J2 i J5 - krzywa wtyczka = zwarcie, a drgania przy
   jezdzie to rozrusza.
 
+## Magnetometr glowicy - wlasne pole robota (15.11.2026)
+
+Objaw: pole calkowite 83-89 uT zamiast ~50 (Krakow), prawie cale nadwyzki
+PIONOWO (~35 uT). Kalibracja 2D (obrot w miejscu) widzi tylko pole poziome,
+pionowego pola robota nie zmierzy. Kompensacja przechylu traktuje cale
+zmierzone pole pionowe jak ziemskie, wiec:
+- przy plytce przechylonej o 5,7 st kalibracja z 15.11 zapamietala ~8 uT
+  przecieku jako hard iron, a kompensacja odjela go drugi raz - po
+  kalibracji pole poziome 7-9 uT zamiast 15,4, magdist trzyma "zaklocenie"
+  i kurs idzie z samego zyro. Po wyprostowaniu plytki: level_cal, mag_cal;
+- na pochylosci blad = 35 uT * sin(nachylenie): 5 st -> ~10 st kursu,
+  10 st -> ~20 st (przy ~17 uT pola poziomego).
+
+ZROBIONE w kodzie (15.11, flora_magcal.h, test hostowy flora_heading):
+- hard iron 3D: oz z inklinacji miejsca przy zwyklym mag_cal auto,
+  model pomiaru w osiach plytki (o, soft iron), poziomowanie na koncu,
+  przeciek pionowej czesci pola Ziemi odejmowany przy dopasowaniu;
+- do magnetometru surowy przechyl plytki (`tilt_raw`), nie po level_cal;
+- MAG_CAL_RESULT z offset_z (kontrakt v5), head/mag_cal: off_z_ut;
+- symulacja: plytka 5,7 st, hard iron (12, -7, -40): odzyskany co do
+  0,05 uT, kurs na plasko 0,1 st, na pochylosci 10 st 0,1 st (stary
+  model 21 st).
+ZOSTAJE:
+- [ ] **Inklinacja miejsca** `FLORA_HEAD_MAG_INCL_DEG` (flora_head_board.h,
+      dzis 66,5 dla Krakowa) z kalkulatora NOAA dla ogrodu, do 0,5 st:
+      1 st bledu = ~2 st kursu na 10 st pochylosci.
+- [ ] Wgrac glowice i bryle RAZEM (kontrakt v5), level_cal, mag_cal na
+      docelowym miejscu; oczekiwane off_z_ut ~ -40, ref_dip_deg ~ -66,
+      pole poziome po kalibracji w 15% od ref_h_ut (magdist bez zaklocenia).
+
+Wykluczone: maszt (karbon, mosiezne inserty), antena WiFi (pole 2,4 GHz
+usrednia sie do zera, magnetometr mierzy pole stale). Obracanie zdjetej
+plytki wokol pionu dawalo stale ~85 - to nie rozstrzyga (pionowe zrodlo
+na plytce i pole pomieszczenia daja to samo).
+
+WYNIK 15.11: plytka do gory nogami ~10 uT (normalnie ~85). Zrodlo jest
+NA PLYTCE GLOWICY: ~40 uT wzdluz osi Z plytki (w strone spodu), pionowe
+pole Ziemi wychodzi ~40-45 uT, czyli pokoj w normie. Czysto w osi Z =
+zrodlo milimetry pod/nad ICM: stalowe sruby/dystanse modulu ICM, niklowane
+gniazda goldpinow pod nim, dlawik albo metalowa obudowa pod spodem.
+Sprawdzic magnesem; po usunieciu |B| przy plytce poziomo ~50 uT.
+Skoro pole jest przyklejone do plytki, kalibracja 3D zdjetej glowicy ma
+sens (mierzy oz wprost); punkt 1 nizej to alternatywa bez zdejmowania.
+Zdjecia plytki z obu stron (15.11): brak srub, pod ICM (z drugiej strony)
+modul TCA9548A, najblizsze metalowe czesci 1,5-5 cm dalej (gniazda pod
+ESP32, oslona modulu, slot SD) - za daleko i nie w osi Z.
+POTWIERDZONE w nocie ICM-20948 (DS-000189 v1.5, tabela 3, str. 13):
+"Zero-field output, initial calibration tolerance -2000..+2000 LSB" przy
+0,15 uT/LSB = do +-300 uT na os. Nasze ~40 uT w Z to wlasne przesuniecie
+zera AK09916, normalne dla tego ukladu. Stale i przyklejone do plytki,
+wiec usuwalne kalibracja - punkt 1 nizej jest potrzebny (kazdy egzemplarz
+ICM ma inne przesuniecie, wiec po wymianie modulu tez).
+Rysunek 13 (str. 83) potwierdza przemapowanie osi w flora_icm20948.c:
+X magnetometru = X akcelerometru, Y i Z odwrocone.
+
+Rozstrzygajace (zrobione):
+- **plytka do gory nogami** (oba razy poziomo): spadek z ~85 do ~20 =
+  zrodlo na plytce; bez zmiany = otoczenie albo skala;
+- **na zewnatrz**, z dala od aut i ogrodzen: ~50 = winne mieszkanie
+  (zbrojenie, metalowa rama mebla) i kalibracje trzeba powtorzyc tam,
+  gdzie robot jezdzi; telefon z aplikacja pokazujaca uT jako odniesienie.
+
+Testy lokalizacji zrodla (patrz `field_ut` w head/mag, 1 Hz):
+- glowica zdjeta z masztu, z dala od wszystkiego, obracana w rece: jesli
+  |B| dalej ~85 i zmienia sie z orientacja - zrodlo na plytce glowicy
+  (wtedy kalibracja 3D zdjetej glowicy ma sens); jesli ~50 - zrodlo
+  w maszcie / bryle;
+- magnes do srub, wkretow i elementow obok ICM (stal przyciaga);
+- glowica na maszcie, maszt bez zasilania vs z zasilaniem (prad).
+
 ## Straznicy napedu i bezpieczenstwa (odlozone - brak czesci sprzetu)
 
 Stan obecny (`flora_motors`): utyk z bezruchu (moc >= 15%, < 5 impulsow
@@ -98,7 +168,8 @@ Polecana kolejnosc: nagrywanie/odtwarzanie -> testy w CI -> DLI.
 
 ### Dopieszczenie
 - **Kalibracja magnetometru 3D** - zdjeta glowica obracana recznie we
-  wszystkich osiach (dzis 2D, os Z nieskorygowana).
+  wszystkich osiach (dzis 2D, os Z nieskorygowana). Ma sens tylko wtedy,
+  gdy zrodlo pola siedzi na samej glowicy - patrz "Magnetometr glowicy".
 - **Samouczenie mapy tagow** - pozycje palikow z odometrii i kursu
   (mini SLAM); dobre na rozdzial "rozszerzenia".
 - **Pozostale kalibracje** - offset i strefa martwa sonarow, wzmocnienia
