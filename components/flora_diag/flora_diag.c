@@ -25,12 +25,24 @@
  *
  * Pelna kolejka gubi nowe linie i liczy je - pomijanie jest jawne.
  *
+ * SLAD STARTU (RTC): rekord w pamieci RTC przezywa restart programowy,
+ * panike i watchdog (nie odciecie zasilania). Timer co 1 s zapisuje w nim
+ * wersje, czas pracy, pierwsze WiFi i broker, zerwania i minimum sterty.
+ * Nastepny start publikuje go na <boot_topic>_prev - widac wtedy takze
+ * uruchomienie, ktore nigdy nie dotarlo do brokera (np. wersja wycofana
+ * przez OTA po 300 s bez polaczenia), razem z tym, czy brakowalo pamieci.
+ *
+ * RAPORT PAMIECI: cfg.sys_topic co SYS_EVERY_MS - sterta wewnetrzna (tam
+ * siedza bufory TLS i WiFi), jej minimum od startu, najwiekszy wolny blok
+ * (TLS potrzebuje ciaglego bloku ~16 kB) i PSRAM.
+ *
  * PETLA LOGOW: publikacja, ktora sie nie uda, sama loguje blad (flora_mqtt).
  * Linie z wlasnego zadania sa wiec pomijane - inaczej kazdy blad publikacji
  * rodzilby kolejny.
  */
 #include <inttypes.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -40,6 +52,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "esp_app_desc.h"
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -50,12 +63,14 @@
 #include "flora_board.h"
 #include "flora_mqtt.h"
 #include "flora_store.h"
+#include "flora_wifi.h"
 
 static const char *TAG = "diag";
 
 /* Tematy wzgledne wobec bazy MQTT. Kopie, bo wywolujacy moze podac stos. */
 static char s_log_topic[32]  = "tele/log";
 static char s_boot_topic[32] = "tele/boot";
+static char s_sys_topic[32]  = "";
 
 #define LOG_LINE_MAX   240   /* dluzsze linie sa przycinane */
 #define QUEUE_LEN      64
@@ -99,6 +114,31 @@ static volatile uint32_t s_boot_dropped;
 
 static esp_reset_reason_t s_reset;
 static uint32_t           s_boots;
+
+/* ---- slad startu w RTC ---- */
+#define TRACE_MAGIC   0x464C5452u   /* "FLTR" */
+#define SYS_EVERY_MS  10000
+
+typedef struct {
+    uint32_t magic;
+    uint32_t boot;        /**< numer startu (NVS) */
+    char     fw[32];
+    uint32_t up_s;        /**< czas pracy przy ostatnim zapisie */
+    uint32_t wifi_s;      /**< czas do pierwszego WiFi; 0 = nie bylo */
+    uint32_t mqtt_s;      /**< czas do pierwszego brokera; 0 = nie bylo */
+    uint32_t mqtt_drops;  /**< zerwania polaczenia z brokerem */
+    uint32_t heap_min;    /**< minimum wolnej sterty wewnetrznej [B] */
+    uint32_t block_min;   /**< najmniejszy "najwiekszy wolny blok" wewn. [B] */
+    uint32_t sum;         /**< suma kontrolna - po wlaczeniu zasilania RTC to smieci */
+} boot_trace_t;
+
+static RTC_NOINIT_ATTR boot_trace_t s_trace;
+static boot_trace_t s_prev;
+static bool         s_have_prev;
+static bool         s_mqtt_was;
+static esp_timer_handle_t s_trace_timer;
+
+static void publish_sys(void);
 
 /* ================= PRZECHWYTYWANIE ================= */
 
@@ -368,11 +408,17 @@ static void flush_boot(void)
 static void log_task(void *arg)
 {
     log_line_t l;
+    int64_t last_sys_us = 0;
     for (;;) {
         /* Bez brokera linie zostaja w kolejce i czekaja. */
         if (!flora_mqtt_is_connected()) {
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
+        }
+        int64_t now = esp_timer_get_time();
+        if (now - last_sys_us >= (int64_t)SYS_EVERY_MS * 1000) {
+            last_sys_us = now;
+            publish_sys();
         }
         if (s_boot) {
             flush_boot();
@@ -391,6 +437,78 @@ static void log_task(void *arg)
         }
         vTaskDelay(pdMS_TO_TICKS(SEND_GAP_MS));
     }
+}
+
+/* ================= SLAD STARTU I PAMIEC ================= */
+
+static uint32_t trace_sum(const boot_trace_t *t)
+{
+    const uint32_t *w = (const uint32_t *)t;
+    uint32_t s = 0x9E3779B9u;
+    for (size_t i = 0; i < offsetof(boot_trace_t, sum) / 4; i++) {
+        s = (s ^ w[i]) * 16777619u;
+    }
+    return s;
+}
+
+static void trace_tick(void *arg)
+{
+    uint32_t up = (uint32_t)(esp_timer_get_time() / 1000000) + 1;   /* 0 = "nie bylo" */
+    s_trace.up_s = up;
+    if (!s_trace.wifi_s && flora_wifi_is_connected()) {
+        s_trace.wifi_s = up;
+    }
+    bool mqtt = flora_mqtt_is_connected();
+    if (mqtt && !s_trace.mqtt_s) {
+        s_trace.mqtt_s = up;
+    }
+    if (s_mqtt_was && !mqtt) {
+        s_trace.mqtt_drops++;
+    }
+    s_mqtt_was = mqtt;
+    uint32_t heap  = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+    uint32_t block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+    if (heap < s_trace.heap_min)   s_trace.heap_min = heap;
+    if (block < s_trace.block_min) s_trace.block_min = block;
+    s_trace.sum = trace_sum(&s_trace);
+}
+
+/** Odczyt sladu poprzedniego startu i zalozenie nowego. Po flora_store (s_boots). */
+static void trace_start(void)
+{
+    if (s_trace.magic == TRACE_MAGIC && s_trace.sum == trace_sum(&s_trace)) {
+        s_prev = s_trace;
+        s_prev.fw[sizeof s_prev.fw - 1] = 0;
+        s_have_prev = true;
+    }
+    memset(&s_trace, 0, sizeof s_trace);
+    s_trace.magic = TRACE_MAGIC;
+    s_trace.boot  = s_boots;
+    strncpy(s_trace.fw, esp_app_get_description()->version, sizeof s_trace.fw - 1);
+    s_trace.heap_min  = UINT32_MAX;
+    s_trace.block_min = UINT32_MAX;
+    trace_tick(NULL);
+
+    const esp_timer_create_args_t a = { .callback = trace_tick, .name = "diag_trace" };
+    if (esp_timer_create(&a, &s_trace_timer) == ESP_OK) {
+        esp_timer_start_periodic(s_trace_timer, 1000000);
+    }
+}
+
+static void publish_sys(void)
+{
+    if (!s_sys_topic[0]) {
+        return;
+    }
+    flora_mqtt_publish_fmt(s_sys_topic, 0, false,
+                           "{\"up_s\":%" PRIu32 ",\"heap_int_kb\":%u,\"heap_int_min_kb\":%u,"
+                           "\"block_int_kb\":%u,\"psram_kb\":%u,\"mqtt_drops\":%" PRIu32 "}",
+                           s_trace.up_s,
+                           (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+                           (unsigned)(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024),
+                           (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024),
+                           (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024),
+                           s_trace.mqtt_drops);
 }
 
 /* ================= START ================= */
@@ -421,6 +539,9 @@ esp_err_t flora_diag_init(const flora_diag_cfg_t *cfg)
     }
     if (cfg && cfg->boot_topic) {
         strncpy(s_boot_topic, cfg->boot_topic, sizeof s_boot_topic - 1);
+    }
+    if (cfg && cfg->sys_topic) {
+        strncpy(s_sys_topic, cfg->sys_topic, sizeof s_sys_topic - 1);
     }
     s_reset = esp_reset_reason();
 
@@ -471,6 +592,16 @@ esp_err_t flora_diag_init(const flora_diag_cfg_t *cfg)
         /* Ostrzezenie, wiec trafi tez na temat logow. */
         ESP_LOGW(TAG, "poprzednie uruchomienie skonczylo sie awaryjnie: %s", reset_name(s_reset));
     }
+
+    trace_start();
+    if (s_have_prev && !s_prev.mqtt_s) {
+        /* Poprzedni start nic nie wyslal - to jedyny slad po nim. */
+        ESP_LOGW(TAG, "poprzedni start nr %" PRIu32 " (%s) przez %" PRIu32 " s nie polaczyl sie "
+                      "z brokerem (WiFi: %s); min. sterta wewn. %" PRIu32 " kB, najw. blok %" PRIu32 " kB",
+                 s_prev.boot, s_prev.fw, s_prev.up_s,
+                 s_prev.wifi_s ? "bylo" : "nie bylo",
+                 s_prev.heap_min / 1024, s_prev.block_min / 1024);
+    }
     return ESP_OK;
 }
 
@@ -495,4 +626,15 @@ void flora_diag_publish_boot(void)
                            app->version, app->date, app->time, app->idf_ver,
                            reset_name(s_reset), s_boots,
                            running ? running->label : "?", rolled_back);
+
+    if (s_have_prev) {
+        char topic[40];
+        snprintf(topic, sizeof topic, "%s_prev", s_boot_topic);
+        flora_mqtt_publish_fmt(topic, 1, true,
+                               "{\"fw\":\"%s\",\"boots\":%" PRIu32 ",\"up_s\":%" PRIu32
+                               ",\"wifi_s\":%" PRIu32 ",\"mqtt_s\":%" PRIu32 ",\"mqtt_drops\":%" PRIu32
+                               ",\"heap_int_min_kb\":%" PRIu32 ",\"block_int_min_kb\":%" PRIu32 "}",
+                               s_prev.fw, s_prev.boot, s_prev.up_s, s_prev.wifi_s, s_prev.mqtt_s,
+                               s_prev.mqtt_drops, s_prev.heap_min / 1024, s_prev.block_min / 1024);
+    }
 }

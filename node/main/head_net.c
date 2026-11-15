@@ -6,6 +6,8 @@
  *   headstatus     "online"/"offline", retain + testament
  *   head/log       logi W i E (i wiecej na zadanie), JSON jak tele/log bryly
  *   head/boot      wersja, powod restartu, licznik startow (retain)
+ *   head/boot_prev slad poprzedniego uruchomienia z RTC (retain, flora_diag.h)
+ *   head/sys       pamiec co 10 s: sterta wewnetrzna, minimum, najwiekszy blok
  *   head/ota       stan aktualizacji
  *   headcmd/<x>    komendy, odpowiedz w headack/<x> (head_remote.c)
  *
@@ -30,6 +32,7 @@ void head_net_early(void)
     static const flora_diag_cfg_t diag = {
         .log_topic  = "head/log",
         .boot_topic = "head/boot",
+        .sys_topic  = "head/sys",
     };
     if (flora_diag_init(&diag) != ESP_OK) {
         ESP_LOGW(TAG, "diagnostyka zdalna niedostepna - logi tylko przez USB");
