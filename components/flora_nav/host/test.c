@@ -11,7 +11,7 @@
  * + znaczniki na palikach. Wypisuje blad zamkniecia trasy kazdego z nich -
  * to te trzy liczby maja trafic na wykres w pracy.
  *
- *   cc -O2 -Wall -I../include -o test test.c ../flora_ekf.c ../flora_sun.c ../flora_sungate.c -lm
+ *   cc -O2 -Wall -I../include -o test test.c ../flora_navcore.c ../flora_ekf.c ../flora_sun.c ../flora_sungate.c -lm
  *   ./test            # sprawdzenia, kod wyjscia 0 = OK
  *   ./test --csv      # trajektoria: t,x,y,x_ekf,y_ekf,spos (przebieg pelny)
  */
@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "flora_ekf.h"
+#include "flora_navcore.h"
 #include "flora_sun.h"
 #include "flora_sungate.h"
 
@@ -342,6 +343,37 @@ int main(int argc, char **argv)
         float extra = R2D(sqrtf(r.P[2][2])) - R2D(sqrtf(ref.P[2][2]));
         printf("  zwykly skret 90 st, zyro opoznione 60 ms: dodatkowa sigma theta %.2f st\n", extra);
         check(extra < 0.1f, "zwykly skret: opoznienie zyro miesci sie w martwej strefie");
+    }
+
+    /* ---- poza z NVS po restarcie (flora_navcore_restore_pose) ---- */
+    {
+        static flora_navcore_t nc;
+        flora_navcore_tuning_t tun = FLORA_NAVCORE_DEFAULT_TUNING();
+        flora_navcore_geom_t geom = { .track_mm = 390.0f, .lat_deg = 50.06, .lon_deg = 19.94, .decl_deg = 6.0f };
+        flora_navcore_init(&nc, &tun, &geom);
+        flora_navcore_restore_pose(&nc, 1000.0f, 500.0f, 90.0f, 30.0f, 300.0f, 10.0f, 10.0f);
+        int same = 1;
+        for (int i = 0; i < FLORA_NAVCORE_VARIANTS; i++) {
+            const flora_ekf_t *v = &nc.v[i].ekf;
+            same &= fabsf(v->x[0] - 1000.0f) < 1e-3f && fabsf(v->x[1] - 500.0f) < 1e-3f &&
+                    fabsf(R2D(v->x[2]) - 90.0f) < 1e-3f && fabsf(R2D(v->x[3]) - 30.0f) < 1e-3f &&
+                    fabsf(sqrtf(v->P[0][0]) - 300.0f) < 0.01f && p_is_sane(v);
+        }
+        check(same, "odtworzenie pozy: wszystkie warianty, z b i zadana niepewnoscia");
+
+        /* Kurs zgodny z zapisanym b (psi = b - theta = -60 = 300 st):
+         * przyjety od razu, bez odrzucen i bez wyjscia z blokady. */
+        flora_navcore_att_t att = { .heading_valid = true, .mag_valid = true,
+                                    .heading_deg = 300.0f, .sigma_deg = 3.0f, .age_us = -1 };
+        int64_t t = 1000000;
+        for (int i = 0; i < 100; i++) {
+            flora_navcore_in_t in = { .t_us = t, .dt_s = 0.02f, .att = &att };
+            flora_navcore_step(&nc, &in);
+            t += 20000;
+        }
+        const flora_ekf_t *f = &nc.v[0].ekf;
+        check(nc.v[0].n_head > 0 && f->n_rejected == 0 && fabsf(R2D(f->x[2]) - 90.0f) < 2.0f,
+              "po odtworzeniu kurs przyjety od razu, theta zostaje");
     }
 
     /* ---- slonce (Krakow) ---- */

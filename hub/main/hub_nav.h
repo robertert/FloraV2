@@ -37,6 +37,12 @@
  * ktore odsiewaja lampe we wnetrzu, odbicia i slonce nisko. Do EKF trafia
  * najwyzej jeden pomiar na 5 s.
  *
+ * ZAPAMIETYWANIE POZY: na postoju (3 s bez ruchu, najwyzej co 30 s, po
+ * przesunieciu o 5 cm albo 3 st) poza glownego wariantu idzie do NVS,
+ * a po restarcie albo OTA wraca do wszystkich wariantow z niepewnoscia
+ * 30 cm i 10 st - robot mogl zostac przeniesiony. Przeniesiony dalej:
+ * cmd/pose_reset (zapisuje nowa poze od razu).
+ *
  * OPOZNIENIE: kurs z glowicy jest przesuwany o obrot od chwili pomiaru
  * (rate_z * wiek), gdy glowica ma TIME_SYNC (hub_links co 10 s). Slonce
  * i znaczniki stosowane w chwili odbioru - wolne albo na postoju.

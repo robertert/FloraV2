@@ -72,6 +72,19 @@ void flora_navcore_reset_pose(flora_navcore_t *c, float x_mm, float y_mm, float 
     flora_sungate_reset(&c->gate);   /* stare pomiary slonca liczone przy innym theta */
 }
 
+void flora_navcore_restore_pose(flora_navcore_t *c, float x_mm, float y_mm, float th_deg,
+                                float b_deg, float sigma_xy_mm, float sigma_th_deg,
+                                float sigma_b_deg)
+{
+    for (int i = 0; i < FLORA_NAVCORE_VARIANTS; i++) {
+        flora_ekf_t *e = &c->v[i].ekf;
+        flora_ekf_set_pose(e, x_mm, y_mm, D2R(th_deg), sigma_xy_mm, D2R(sigma_th_deg), false);
+        e->x[FLORA_EKF_B] = flora_ekf_wrap(D2R(b_deg));
+        e->P[FLORA_EKF_B][FLORA_EKF_B] = D2R(sigma_b_deg) * D2R(sigma_b_deg);
+    }
+    flora_sungate_reset(&c->gate);
+}
+
 const flora_navcore_tag_t *flora_navcore_tag(const flora_navcore_t *c, uint16_t id)
 {
     for (int i = 0; i < c->n_tags; i++) {

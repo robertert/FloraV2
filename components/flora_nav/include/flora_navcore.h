@@ -173,6 +173,15 @@ bool flora_navcore_step(flora_navcore_t *c, const flora_navcore_in_t *in);
 /** Poza wszystkich wariantow; b liczone od nowa (patrz flora_ekf_set_pose). */
 void flora_navcore_reset_pose(flora_navcore_t *c, float x_mm, float y_mm, float th_deg);
 
+/**
+ * Poza z pamieci (NVS) po restarcie: wszystkie warianty, razem z b.
+ * Niepewnosc podaje wolajacy - robot mogl zostac przeniesiony, wiec
+ * powinna byc wieksza niz w chwili zapisu; znaczniki i kurs ja zawezaja.
+ */
+void flora_navcore_restore_pose(flora_navcore_t *c, float x_mm, float y_mm, float th_deg,
+                                float b_deg, float sigma_xy_mm, float sigma_th_deg,
+                                float sigma_b_deg);
+
 const flora_navcore_tag_t *flora_navcore_tag(const flora_navcore_t *c, uint16_t id);
 
 #ifdef __cplusplus

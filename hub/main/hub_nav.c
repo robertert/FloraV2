@@ -45,6 +45,27 @@ static const char *TAG = "nav";
 
 #define R2D(r) ((r) * 180.0f / (float)M_PI)
 
+/* ---- zapamietywanie pozy (NVS) ----
+ * Zapis tylko na postoju, najwyzej co POSE_SAVE_GAP_US i tylko po ruchu -
+ * NVS zuzywa flash przy kazdym zapisie, a na postoju poza i tak stoi. */
+#define POSE_SAVE_STILL_US  3000000
+#define POSE_SAVE_GAP_US    30000000
+#define POSE_SAVE_MOVE_MM   50.0f
+#define POSE_SAVE_TURN_DEG  3.0f
+/* Niepewnosc po odtworzeniu: robot mogl zostac przeniesiony przy
+ * wylaczonym zasilaniu. Wystarczajaco szeroko, zeby znaczniki i kurs
+ * przeszly bramke i poprawily poze; przeniesienie o wiecej - cmd/pose_reset. */
+#define POSE_RESTORE_XY_MM  300.0f
+#define POSE_RESTORE_TH_DEG 10.0f
+#define POSE_RESTORE_B_DEG  10.0f
+#define POSE_BLOB_VERSION   1
+
+typedef struct {
+    uint32_t version;
+    float    x_mm, y_mm, th_deg, b_deg;
+    float    spos_mm;    /**< niepewnosc w chwili zapisu */
+} pose_blob_t;
+
 _Static_assert(HUB_NAV_MAX_TAGS == FLORA_NAVCORE_MAX_TAGS, "mapa palikow: rozne limity");
 _Static_assert(FLORA_TAGS_MAX <= FLORA_NAVCORE_MAX_DETS, "za malo miejsca na wykrycia");
 
@@ -65,6 +86,13 @@ static struct {
      * miedzy ktorymi zadzialaly na robocie. */
     bool  pend_reset, pend_geom;
     float reset_x, reset_y, reset_th;
+
+    /* zapamietywanie pozy - tylko nav_task (i start, zanim ruszy) */
+    bool        pend_save;      /**< zapisz w najblizszym takcie (po resecie) */
+    int64_t     still_since_us;
+    int64_t     last_save_us;
+    pose_blob_t saved;
+    bool        have_saved;
 } s_n;
 
 static bool time_ok(time_t *now)
@@ -122,6 +150,7 @@ static void apply_pending(void)
         hub_rec_header();
     }
     if (reset) {
+        s_n.pend_save = true;   /* nowa poza od razu do NVS */
         hub_rec_printf(FLORA_NAVLOG_FMT_R, x, y, th);
         ESP_LOGI(TAG, "poza ustawiona we wszystkich wariantach: (%.0f, %.0f) mm, %.1f st", x, y, th);
     }
@@ -203,6 +232,90 @@ static int read_tags(uint32_t *seq, flora_navcore_det_t *dets)
     return n;
 }
 
+/* ================= ZAPAMIETYWANIE POZY ================= */
+
+/** Poza glownego wariantu. Zaklada blokade. */
+static pose_blob_t pose_now(void)
+{
+    const flora_ekf_t *e = &s_n.core.v[0].ekf;
+    return (pose_blob_t){
+        .version = POSE_BLOB_VERSION,
+        .x_mm    = e->x[FLORA_EKF_X],
+        .y_mm    = e->x[FLORA_EKF_Y],
+        .th_deg  = R2D(e->x[FLORA_EKF_TH]),
+        .b_deg   = R2D(e->x[FLORA_EKF_B]),
+        .spos_mm = flora_ekf_pos_sigma_max(e),
+    };
+}
+
+static void pose_store(const pose_blob_t *p)
+{
+    flora_store_t h;
+    if (flora_store_open(FLORA_NVS_NS_CALIB, &h) != ESP_OK) {
+        return;
+    }
+    if (flora_store_set_blob(h, FLORA_NVS_NAV_POSE, p, sizeof *p) != ESP_OK) {
+        ESP_LOGW(TAG, "zapis pozy do NVS nieudany");
+    }
+    flora_store_close(h);
+}
+
+/** Wolane z nav_task po kazdym takcie, bez blokady. */
+static void pose_maybe_save(const pose_blob_t *cur, bool still, int64_t now_us)
+{
+    if (!still) {
+        s_n.still_since_us = 0;
+        if (!s_n.pend_save) {
+            return;
+        }
+    } else if (!s_n.still_since_us) {
+        s_n.still_since_us = now_us;
+    }
+    bool due = s_n.pend_save;
+    if (!due && s_n.still_since_us && now_us - s_n.still_since_us >= POSE_SAVE_STILL_US &&
+        now_us - s_n.last_save_us >= POSE_SAVE_GAP_US) {
+        float dx = cur->x_mm - s_n.saved.x_mm, dy = cur->y_mm - s_n.saved.y_mm;
+        float dth = fabsf(fmodf(cur->th_deg - s_n.saved.th_deg + 540.0f, 360.0f) - 180.0f);
+        due = !s_n.have_saved || dx * dx + dy * dy > POSE_SAVE_MOVE_MM * POSE_SAVE_MOVE_MM ||
+              dth > POSE_SAVE_TURN_DEG;
+    }
+    if (!due) {
+        return;
+    }
+    pose_store(cur);
+    s_n.saved        = *cur;
+    s_n.have_saved   = true;
+    s_n.last_save_us = now_us;
+    s_n.pend_save    = false;
+}
+
+/** Przy starcie, przed zadaniem nav. */
+static void pose_restore(void)
+{
+    flora_store_t h;
+    if (flora_store_open(FLORA_NVS_NS_CALIB, &h) != ESP_OK) {
+        return;
+    }
+    pose_blob_t p;
+    size_t len = sizeof p;
+    bool ok = flora_store_get_blob(h, FLORA_NVS_NAV_POSE, &p, &len) == ESP_OK &&
+              len == sizeof p && p.version == POSE_BLOB_VERSION &&
+              isfinite(p.x_mm) && isfinite(p.y_mm) && isfinite(p.th_deg) && isfinite(p.b_deg);
+    flora_store_close(h);
+    if (!ok) {
+        ESP_LOGI(TAG, "brak zapisanej pozy - start w (0, 0, 0)");
+        return;
+    }
+    float sxy = p.spos_mm > POSE_RESTORE_XY_MM ? p.spos_mm : POSE_RESTORE_XY_MM;
+    flora_navcore_restore_pose(&s_n.core, p.x_mm, p.y_mm, p.th_deg, p.b_deg,
+                               sxy, POSE_RESTORE_TH_DEG, POSE_RESTORE_B_DEG);
+    s_n.saved      = p;
+    s_n.have_saved = true;
+    ESP_LOGI(TAG, "poza z NVS: (%.0f, %.0f) mm, %.1f st, b %.1f st, niepewnosc %.0f mm "
+                  "(przeniesiony robot: cmd/pose_reset)",
+             p.x_mm, p.y_mm, p.th_deg, p.b_deg, sxy);
+}
+
 /** Flaga postoju dla glowicy (ZUPT): przy zmianie i co STILL_EVERY_US. */
 static void send_still(bool still, int64_t now_us)
 {
@@ -282,7 +395,9 @@ static void nav_task(void *arg)
         bool stepped = flora_navcore_step(&s_n.core, &in);
         bool still   = s_n.core.still;
         int  gate    = s_n.core.sun_gate;
+        pose_blob_t cur = pose_now();
         xSemaphoreGive(s_n.lock);
+        pose_maybe_save(&cur, still, now.timestamp_us);
 
         if (!stepped) {
             ESP_LOGW(TAG, "skok enkoderow (%.0f / %.0f mm) - pomijam krok", in.dl_mm, in.dr_mm);
@@ -482,6 +597,7 @@ esp_err_t hub_nav_start(void)
     flora_navcore_geom_t g = geom_from(&p);
     flora_navcore_init(&s_n.core, &tun, &g);
     tags_load();
+    pose_restore();
 
     /* Czas UTC tylko dla kompasu slonecznego. Bez sieci SNTP ponawia
      * w tle, a slonce jest po prostu pomijane (bramka 2). */

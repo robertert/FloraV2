@@ -198,6 +198,7 @@
 #define FLORA_NVS_SITE_LON    "site_lon"
 #define FLORA_NVS_MAG_DECL    "mag_decl"
 #define FLORA_NVS_TAG_MAP     "tag_map"
+#define FLORA_NVS_NAV_POSE    "nav_pose"     /**< ostatnia poza na postoju (hub_nav) */
 
 /* ---- Regulator predkosci kol (hub_drive) ----
  * Klucze w FLORA_NVS_NS_CALIB, ustawiane przez cmd/config/<klucz>.
