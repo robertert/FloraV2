@@ -58,6 +58,11 @@ struct flora_link_s {
     handler_t          handlers[FLORA_LINK_MAX_HANDLERS];
     flora_link_stats_t stats;
     bool               initialized;
+
+    /* Ostatnie surowe bajty z kabla, do diagnozy okablowania: gdy nic
+     * nie przechodzi przez parser, tylko tak widac, co naprawde dochodzi. */
+    uint8_t            raw_tail[FLORA_LINK_RAW_TAIL];
+    uint32_t           raw_pos;
 };
 
 /* ================= NADAWANIE ================= */
@@ -260,6 +265,7 @@ static void rx_task(void *arg)
                 int got = uart_read_bytes(h->cfg.port, chunk, n, 0);
                 for (int i = 0; i < got; i++) {
                     h->stats.bytes_rx++;
+                    h->raw_tail[h->raw_pos++ % FLORA_LINK_RAW_TAIL] = chunk[i];
                     flora_parse_result_t r = flora_parser_feed(&h->parser, chunk[i]);
                     switch (r) {
                         case FLORA_PARSE_FRAME:       handle_frame(h, &h->parser.frame); break;
@@ -357,6 +363,24 @@ void flora_link_get_stats(flora_link_handle_t h, flora_link_stats_t *out)
     if (h && out && h->initialized) {
         *out = h->stats;
     }
+}
+
+size_t flora_link_raw_tail(flora_link_handle_t h, uint8_t *out, size_t max)
+{
+    if (!h || !out || !h->initialized) {
+        return 0;
+    }
+    /* Czytamy bez blokady - to podglad diagnostyczny, pojedynczy
+     * pomieszany bajt przy rownoczesnym odbiorze nie ma znaczenia. */
+    uint32_t pos = h->raw_pos;
+    size_t n = pos < FLORA_LINK_RAW_TAIL ? pos : FLORA_LINK_RAW_TAIL;
+    if (n > max) {
+        n = max;
+    }
+    for (size_t i = 0; i < n; i++) {
+        out[i] = h->raw_tail[(pos - n + i) % FLORA_LINK_RAW_TAIL];
+    }
+    return n;
 }
 
 void flora_link_reset_stats(flora_link_handle_t h)

@@ -318,6 +318,16 @@ static void do_status(void)
              flora_link_is_up(s_s.cfg.down) ? "up" : "DOWN",
              ls.frames_sent, ls.frames_ok, ls.bytes_rx, ls.err_crc, ls.err_length,
              ls.err_version, ls.err_type, ls.err_flags, ls.uart_overflow);
+
+    uint8_t raw[FLORA_LINK_RAW_TAIL];
+    size_t n = flora_link_raw_tail(s_s.cfg.down, raw, sizeof raw);
+    char hex[FLORA_LINK_RAW_TAIL * 3 + 1] = "";
+    for (size_t i = 0; i < n; i++) {
+        snprintf(hex + i * 3, 4, "%02X ", raw[i]);
+    }
+    /* Ostrzezenie, nie info: po 30 s od startu przez MQTT ida tylko W/E,
+     * a ten podglad jest potrzebny wlasnie przy dlugiej obserwacji. */
+    ESP_LOGW(TAG, "lacze dol surowo: %s", n ? hex : "(nic)");
 }
 
 /* ================= PETLA ================= */

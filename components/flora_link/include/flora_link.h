@@ -209,6 +209,17 @@ bool flora_link_is_up(flora_link_handle_t h);
 void flora_link_get_stats(flora_link_handle_t h, flora_link_stats_t *out);
 void flora_link_reset_stats(flora_link_handle_t h);
 
+/** Ile ostatnich surowych bajtow z kabla pamieta lacze. */
+#define FLORA_LINK_RAW_TAIL 16
+
+/**
+ * @brief Kopiuje ostatnie odebrane bajty, najstarszy pierwszy.
+ *
+ * Diagnostyka okablowania: pokazuje, co dochodzi, zanim zobaczy to parser.
+ * @return liczba skopiowanych bajtow (najwyzej min(max, FLORA_LINK_RAW_TAIL))
+ */
+size_t flora_link_raw_tail(flora_link_handle_t h, uint8_t *out, size_t max);
+
 /**
  * @brief Zwiera nadawanie z odbiorem wewnatrz ukladu.
  *
