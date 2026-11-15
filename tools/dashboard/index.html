@@ -11,45 +11,101 @@
   :root {
     --bg: #111418; --panel: #1a1f25; --line: #2a313a; --text: #e3e7ec;
     --muted: #8a94a0; --ok: #3fb950; --bad: #f85149; --warn: #d29922; --accent: #4c9aff;
+    --hdr: 96px;   /* wysokosc naglowka, nadpisywana z JS */
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-           padding: 10px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
-           background: var(--bg); z-index: 1; }
-  header h1 { font-size: 15px; margin: 0 12px 0 0; }
+  header { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center;
+           padding: 8px 16px 0; border-bottom: 1px solid var(--line); position: sticky; top: 0;
+           background: var(--bg); z-index: 2; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; }
   header h1 .ver { font-size: 12px; font-weight: normal; color: var(--muted); }
-  /* Formularz tylko dla menedzera hasel - ukladem zostaje czescia naglowka. */
+  /* Formularz tylko dla menedzera hasel - ukladem zostaje czescia naglowka.
+   * Po polaczeniu chowa sie; klik w pigulke brokera pokazuje go znowu. */
   header form { display: contents; }
+  header.connected:not(.showlogin) form { display: none; }
+  #conn { cursor: pointer; }
   input, button, select { font: inherit; color: var(--text); background: var(--panel);
                           border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
-  input[type=text] { width: 220px; }
+  input[type=text] { width: 220px; max-width: 100%; }
   button { cursor: pointer; }
   button:hover { border-color: var(--accent); }
   button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.danger { border-color: var(--bad); color: var(--bad); }
-  .pill { padding: 2px 8px; border-radius: 99px; font-size: 12px; border: 1px solid var(--line); }
+  .pill { padding: 2px 8px; border-radius: 99px; font-size: 12px; border: 1px solid var(--line);
+          white-space: nowrap; }
   .pill.ok { color: var(--ok); border-color: var(--ok); }
   .pill.bad { color: var(--bad); border-color: var(--bad); }
-  main { padding: 16px; display: grid; gap: 12px;
-         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .pill.warn { color: var(--warn); border-color: var(--warn); }
+  .pill.unk { color: var(--muted); border-style: dashed; }
+  .strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  #lastack { font-size: 12px; }
+
+  /* Zakladki: ostatni wiersz naglowka. Kropka = w zakladce cos przestalo plynac. */
+  nav.tabs { flex-basis: 100%; display: flex; gap: 2px; overflow-x: auto; margin-top: 2px; }
+  nav.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0;
+                    background: none; padding: 7px 12px; color: var(--muted); white-space: nowrap; }
+  nav.tabs button:hover { color: var(--text); }
+  nav.tabs button.on { color: var(--text); border-bottom-color: var(--accent); background: none; }
+  nav.tabs button.warn::after { content: " \25CF"; color: var(--warn); }
+
+  /* Uklad: sterowanie stale z lewej, zakladki obok. Na telefonie jedno pod drugim. */
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 12px; padding: 16px;
+            align-items: start; }
+  .side { position: sticky; top: calc(var(--hdr) + 16px); }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+          align-items: start; }
+  .tab[hidden] { display: none; }
+  .subhead { grid-column: 1 / -1; margin: 6px 0 -4px; font-size: 13px; color: var(--text);
+             display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+  .subhead:first-child { margin-top: 0; }
+  .subhead .muted { font-size: 12px; }
+  .more summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .side .more[open] summary { display: none; }
+  /* Telefon: sterowanie jako zwarty pasek przyklejony do dolu ekranu,
+   * kierunki w jednym rzedzie, reszta zwinieta. */
+  @media (max-width: 760px) {
+    header { padding: 8px 12px 0; }
+    .layout { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    .side { order: 2; position: sticky; top: auto; bottom: 0; z-index: 1;
+            margin: 0 -12px -12px; }
+    .side .card { border-radius: 8px 8px 0 0; box-shadow: 0 -4px 16px rgba(0, 0, 0, .5); }
+    .side .card h2 { display: none; }
+    .side .controls { grid-template-columns: repeat(5, 1fr); }
+    .side .controls span { display: none; }
+    .controls [data-dir="left"]  { order: 1; }
+    .controls [data-dir="fwd"]   { order: 2; }
+    .controls [data-dir="stop"]  { order: 3; }
+    .controls [data-dir="back"]  { order: 4; }
+    .controls [data-dir="right"] { order: 5; }
+    .side .row { margin-top: 6px; }
+    .side .more summary { margin-top: 4px; }
+  }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+          min-width: 0; }
   .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
-             color: var(--muted); margin: 0 0 6px; display: flex; justify-content: space-between; }
-  .card h2 .age { text-transform: none; letter-spacing: 0; }
-  .card.stale { opacity: .45; }
-  .kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; }
+             color: var(--muted); margin: 0 0 6px; display: flex; justify-content: space-between;
+             gap: 8px; align-items: center; }
+  .card h2 .age { text-transform: none; letter-spacing: 0; font-weight: normal; white-space: nowrap; }
+  .card h2 .age.bad { color: var(--bad); }
+  /* Karta "live", ktorej strumien zamilkl: gasna tylko dane, przyciski zostaja jasne. */
+  .card.stale .kv, .card.stale canvas, .card.stale .sonars { opacity: .4; }
+  .card.action { border-color: #33404f; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; overflow-wrap: anywhere; }
   .kv span:nth-child(odd) { color: var(--muted); }
   .wide { grid-column: 1 / -1; }
   canvas { width: 100%; height: 50px; display: block; margin-top: 6px; }
-  .controls { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; justify-content: start; }
+  .controls { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; justify-content: center; }
   .controls button { height: 44px; }
   .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
-  #log { height: 260px; overflow: auto; white-space: pre; font-size: 12px;
+  .note { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+  #log { height: 420px; overflow: auto; white-space: pre; font-size: 12px;
          background: #0c0e11; border-radius: 6px; padding: 6px; }
   #log .t { color: var(--accent); }
-  #robotlog { max-height: 200px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
+  #robotlog { max-height: 420px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
   #robotlog .E { color: var(--bad); }
   #robotlog .W { color: var(--warn); }
   #robotlog .I, #robotlog .D { color: var(--muted); }
@@ -69,11 +125,10 @@
   .sonar .bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
   .sonar .bar div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
   .sonar .stats { font-size: 11px; color: var(--muted); margin-top: 4px; }
-  .pill.warn { color: var(--warn); border-color: var(--warn); }
 </style>
 </head>
 <body>
-<header>
+<header id="hdr">
   <h1>Flora debug <span id="srvver" class="ver" title="wersja serwera"></span></h1>
   <!-- Prawdziwy formularz logowania z atrybutami autocomplete: bez niego
        menedzery hasel (Safari, Chrome, 1Password) nie rozpoznaja logowania
@@ -87,14 +142,36 @@
            style="width:90px" autocomplete="current-password">
     <button id="connect" type="submit">Polacz</button>
   </form>
-  <span id="conn" class="pill bad">broker: rozlaczony</span>
-  <span id="robot" class="pill bad">robot: ?</span>
-  <span id="headpill" class="pill bad" title="wlasne polaczenie glowicy z brokerem (headstatus)">glowica: ?</span>
-  <span id="lastack" class="muted"></span>
+  <!-- Pasek stanu: kazda pigulka bez swiezych danych przechodzi w "?". -->
+  <div class="strip">
+    <span id="conn" class="pill bad" title="klik: pokaz / schowaj logowanie">broker: rozlaczony</span>
+    <span id="robot" class="pill unk" title="bryla: polaczenie z brokerem (status)">bryla: ?</span>
+    <span id="headpill" class="pill unk" title="glowica: wlasne WiFi i polaczenie z brokerem (headstatus)">glowica WiFi: ?</span>
+    <span id="uartpill" class="pill unk" data-label="UART" title="lacze glowica - bryla po UART (head/link.up)">UART: ?</span>
+    <span id="mastpill" class="pill unk" data-label="maszt" title="zasilanie masztu z glowica (tele/mast)">maszt: ?</span>
+    <span id="pwrpill" class="pill unk" data-label="zasilanie" title="napiecie i prad z INA226 (tele/power)">zasilanie: ?</span>
+    <span id="waterpill" class="pill unk" data-label="zbiornik" title="czujnik wody w zbiorniku (tele/water)">zbiornik: ?</span>
+    <span id="stallpill" class="pill unk" data-label="utyk" title="zablokowane kolo (tele/drive.stall)">utyk: ?</span>
+    <span id="lastack" class="muted"></span>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="jazda">Jazda</button>
+    <button data-tab="bryla">Bryla (dol)</button>
+    <button data-tab="glowica">Glowica (gora)</button>
+    <button data-tab="kalib">Kalibracje</button>
+    <button data-tab="serwis">Serwis</button>
+    <button data-tab="logi">Logi</button>
+  </nav>
 </header>
 
-<main>
-  <section class="card" id="c-drive-ctl">
+<!-- Rodzaje kart (data-kind):
+     live  - strumien okresowy; po ciszy gasna dane, wiek robi sie czerwony,
+     state - ostatni stan / wynik (retain, przy polaczeniu, po zdarzeniu);
+             cisza jest normalna, wiec karta nigdy nie gasnie,
+     brak  - karta samych przyciskow (klasa action), tez nigdy nie gasnie. -->
+<div class="layout">
+<aside class="side">
+  <section class="card action" id="c-drive-ctl">
     <h2>Sterowanie</h2>
     <div class="controls">
       <span></span><button data-dir="fwd">&#9650;</button><span></span>
@@ -107,106 +184,42 @@
       moc <input id="power" type="range" min="0" max="100" value="30" style="width:120px">
       <span id="powerv">30%</span>
     </div>
-    <div class="row">
-      <button id="pump-on">pompka ON</button><button id="pump-off">pompka OFF</button>
-    </div>
-    <div class="row">
-      <button id="mast-on">maszt ON</button><button id="mast-off">maszt OFF</button>
-      <button id="stall-clear">kasuj utyk</button>
-    </div>
-    <p class="muted" style="margin:8px 0 0;font-size:12px">
-      Kierunek dziala jak przelacznik: panel powtarza komende co 300 ms,
-      robot staje sam po 1,5 s ciszy.</p>
+    <!-- Na komputerze rozwiniete, na telefonie zwiniete pod pasek jazdy. -->
+    <details class="more" id="drive-more">
+      <summary>pompka, maszt, utyk</summary>
+      <div class="row">
+        <button id="pump-on">pompka ON</button><button id="pump-off">pompka OFF</button>
+      </div>
+      <div class="row">
+        <button id="mast-on">maszt ON</button><button id="mast-off">maszt OFF</button>
+      </div>
+      <div class="row"><button id="stall-clear">kasuj utyk</button></div>
+      <p class="note">
+        Kierunek dziala jak przelacznik: panel powtarza komende co 300 ms,
+        robot staje sam po 1,5 s ciszy. Strzalki = kierunek, spacja = STOP.</p>
+    </details>
   </section>
+</aside>
 
-  <section class="card" data-topic="tele/drive"><h2>Naped <span class="age"></span></h2>
+<main>
+<!-- ================= JAZDA ================= -->
+<div class="tab grid" data-tab="jazda">
+  <section class="card" data-topic="tele/drive" data-kind="live"><h2>Naped <span class="age"></span></h2>
     <div class="kv"></div><canvas data-plot="tele/drive:v_l_mm_s,v_r_mm_s"></canvas></section>
-  <section class="card" data-topic="tele/pid" id="c-pid"><h2>PID predkosci <span class="age"></span></h2>
-    <div class="row">
-      tryb <button id="mode-pwm">pwm</button><button id="mode-pid">pid</button>
-      <span id="mode-now" class="muted"></span>
-    </div>
-    <div class="row">
-      kp <input id="pid_kp" type="number" step="0.01" style="width:60px">
-      ki <input id="pid_ki" type="number" step="0.01" style="width:60px">
-      kd <input id="pid_kd" type="number" step="0.001" style="width:60px">
-    </div>
-    <div class="row">
-      kff <input id="pid_kff" type="number" step="0.01" style="width:60px">
-      ks <input id="pid_ks" type="number" step="0.5" style="width:60px">
-      acc <input id="pid_acc" type="number" step="50" style="width:60px">
-      vmax <input id="pid_vmax" type="number" step="10" style="width:60px">
-    </div>
-    <div class="row">
-      skok <input id="step-v" type="number" value="150" style="width:60px"> mm/s
-      <input id="step-ms" type="number" value="2000" style="width:60px"> ms
-      <button id="pid-step">skok</button>
-    </div>
-    <p class="muted" style="margin:8px 0 0;font-size:12px">
-      Pole wysyla sie po zmianie (Enter albo wyjscie z pola). Wykresy:
-      niebieski = zadana, pomaranczowy = pomiar; gora lewe, dol prawe kolo.</p>
-    <canvas data-plot="tele/pid:sp_l,v_l"></canvas>
-    <canvas data-plot="tele/pid:sp_r,v_r"></canvas>
+  <section class="card" data-topic="head/obstacles" data-kind="live"><h2>Przeszkody (kamera glowicy) <span class="age"></span></h2>
     <div class="kv"></div></section>
-  <section class="card" data-topic="tele/pose"><h2>Pozycja (EKF) <span class="age"></span></h2>
-    <div class="row">
+  <section class="card" data-topic="tele/pose" data-kind="live"><h2>Pozycja (EKF) <span class="age"></span></h2>
+    <div class="row" style="margin-top:0">
       <button id="pose-reset">zeruj poze</button>
-      <span class="muted">x, y, kat = 0 w miejscu, gdzie robot teraz stoi</span>
+      <span class="muted" style="font-size:12px">x, y, kat = 0 tam, gdzie robot stoi</span>
     </div>
-    <p class="muted" style="margin:8px 0 0;font-size:12px">
-      Wykres: spos_mm, najwieksza niepewnosc pozycji. Rosnie z droga,
+    <p class="note">Wykres: spos_mm, najwieksza niepewnosc pozycji. Rosnie z droga,
       spada po znaczniku.</p>
     <canvas data-plot="tele/pose:spos_mm"></canvas>
     <div class="kv"></div></section>
-  <section class="card" data-topic="tele/nav_sun"><h2>Kompas sloneczny <span class="age"></span></h2>
-    <p class="muted" style="margin:0;font-size:12px">
-      gate: 0 przyjety, 1 za ciemno (lampa?), 2 noc / brak czasu UTC,
-      3 niestabilny, 4 niezgodny z magnetometrem. Warianty EKF do porownania
-      plyna na tele/pose_*.</p>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="head/mag"><h2>Magnetometr <span class="age"></span></h2>
-    <div class="row">
-      <button id="magcal-auto">kalibruj (obrot robota 40 s)</button>
-      <button id="magcal-manual">kalibruj (recznie 60 s)</button>
-      <button id="gyrocal">kalibruj zyro</button>
-    </div>
-    <div class="row">
-      <button id="level-auto">poziom (auto, obrot 180)</button>
-      <button id="level-flat">poziom (plasko)</button>
-      <span class="muted">poziom PRZED magnetometrem</span>
-    </div>
-    <p class="muted" style="margin:8px 0 0;font-size:12px">
-      Kalibracja z dala od aut, stali i zbrojonego betonu. Recznie: 2-3 pelne
-      obroty wokol pionu. Zyro: robot nieruchomo 2 s. Wykres: pole poziome
-      (skok = zaklocenie).</p>
-    <canvas data-plot="head/mag:field_h_ut"></canvas>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="head/mag_cal"><h2>Ostatnia kalibracja magnetometru <span class="age"></span></h2>
-    <p class="muted" style="margin:0;font-size:12px">
-      cal_status: 0 ok, 1 za malo probek, 2 niepelny obrot, 3 brak elipsy,
-      4 duzy rozrzut, 5 elipsa zbyt splaszczona (zelazo przy czujniku).</p>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="head/level_cal"><h2>Ostatnia kalibracja poziomu <span class="age"></span></h2>
-    <p class="muted" style="margin:0;font-size:12px">
-      lvl_status: 0 zapisane, 1 ruch w trakcie, 2 brak kroku 1, 3 krok 1 ok (obroc o 180 i krok 2).</p>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="config_cal"><h2>Kalibracje bryly <span class="age"></span></h2>
-    <div class="row">
-      pompka: <button id="pump-10s">pompuj 10 s</button>
-      zmierzone <input id="pump-ml" type="number" step="1" style="width:70px"> ml
-      <button id="pump-cal">zapisz</button>
-    </div>
-    <div class="row">
-      INA226: multimetr <input id="ina-a" type="number" step="0.001" style="width:70px"> A
-      <button id="ina-cal">zapisz</button>
-      <span class="muted">(prad >= 0,3 A, dziala po restarcie)</span>
-    </div>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="tele/power"><h2>Zasilanie <span class="age"></span></h2>
-    <div class="kv"></div><canvas data-plot="tele/power:a"></canvas></section>
-  <section class="card" data-topic="tele/soil"><h2>Gleba <span class="age"></span></h2>
-    <div class="kv"></div><canvas data-plot="tele/soil:pct"></canvas></section>
-  <section class="card wide" data-topic="tele/sonar"><h2>Dalmierze <span class="age"></span></h2>
+  <section class="card" data-topic="head/attitude" data-kind="live"><h2>Orientacja (glowica) <span class="age"></span></h2>
+    <div class="kv"></div><canvas data-plot="head/attitude:hdg_deg"></canvas></section>
+  <section class="card wide" data-topic="tele/sonar" data-kind="live"><h2>Dalmierze <span class="age"></span></h2>
     <div class="row" style="margin: 0 0 8px">
       test: <button id="sonar-all" data-sel="all">wszystkie</button>
       <button data-sel="a">tylko A</button><button data-sel="b">tylko B</button><button data-sel="c">tylko C</button>
@@ -238,22 +251,177 @@
         <canvas data-plot="tele/sonar:mm_c"></canvas>
       </div>
     </div>
-    <p class="muted" style="margin: 8px 0 0; font-size: 12px">Zbliz dlon do czujnika - jego kafelek mignie.
+    <p class="note">Zbliz dlon do czujnika - jego kafelek mignie.
       Strefa martwa ponizej 20 cm daje "za blisko". Rozrzut = odchylenie z ostatnich 20 publikacji.
       Duza liczba to mediana z 5 pomiarow (0,5 s), "najblizej" to minimum z nich - tego uzyje straznik napedu.</p></section>
-  <section class="card" data-topic="tele/temp"><h2>Temperatura <span class="age"></span></h2>
+</div>
+
+<!-- ================= BRYLA ================= -->
+<div class="tab grid" data-tab="bryla" hidden>
+  <div class="subhead">Czujniki i wykonawcze bryly <span class="muted">tele/* - mierzy i publikuje sama bryla</span></div>
+  <section class="card" data-topic="tele/power" data-kind="live"><h2>Zasilanie <span class="age"></span></h2>
+    <div class="kv"></div><canvas data-plot="tele/power:a"></canvas></section>
+  <section class="card" data-topic="tele/soil" data-kind="live"><h2>Gleba <span class="age"></span></h2>
+    <div class="kv"></div><canvas data-plot="tele/soil:pct"></canvas></section>
+  <section class="card" data-topic="tele/water" data-kind="live"><h2>Zbiornik <span class="age"></span></h2>
     <div class="kv"></div></section>
-  <section class="card" data-topic="tele/water"><h2>Zbiornik <span class="age"></span></h2>
+  <section class="card" data-topic="tele/pump" data-kind="live"><h2>Pompka <span class="age"></span></h2>
     <div class="kv"></div></section>
-  <section class="card" data-topic="tele/pump"><h2>Pompka <span class="age"></span></h2>
+  <section class="card" data-topic="tele/mast" data-kind="live"><h2>Maszt <span class="age"></span></h2>
     <div class="kv"></div></section>
-  <section class="card" data-topic="tele/mast"><h2>Maszt <span class="age"></span></h2>
+  <section class="card" data-topic="tele/temp" data-kind="live"><h2>Temperatura (DS18B20) <span class="age"></span></h2>
+    <div class="kv"></div>
+    <p class="note">Mierzy pakiet baterii we wnetrzu bryly, nie powietrze (to BME280 w glowicy).</p></section>
+  <section class="card" data-topic="tele/nav_sun" data-kind="live"><h2>Kompas sloneczny <span class="age"></span></h2>
+    <p class="note" style="margin:0 0 6px">
+      gate: 0 przyjety, 1 za ciemno (lampa?), 2 noc / brak czasu UTC,
+      3 niestabilny, 4 niezgodny z magnetometrem. Liczy bryla z danych glowicy;
+      warianty EKF plyna na tele/pose_*.</p>
     <div class="kv"></div></section>
-  <section class="card" data-topic="tele/sys"><h2>System <span class="age"></span></h2>
+  <section class="card" data-topic="tele/sys" data-kind="live"><h2>System bryly <span class="age"></span></h2>
     <div class="kv"></div></section>
-  <section class="card" data-topic="tele/boot"><h2>Start <span class="age"></span></h2>
+</div>
+
+<!-- ================= GLOWICA ================= -->
+<div class="tab grid" data-tab="glowica" hidden>
+  <div class="subhead">Przez UART i bryle
+    <span class="muted">head/* - glowica wysyla po UART, publikuje bryla. Cisza = maszt OFF albo zerwane lacze.</span></div>
+  <section class="card" data-topic="head/link" data-kind="live"><h2>Lacze UART <span class="age"></span></h2>
     <div class="kv"></div></section>
-  <section class="card" data-topic="tele/ota"><h2>Aktualizacja (OTA) <span class="age"></span></h2>
+  <section class="card" data-topic="head/status" data-kind="live"><h2>Status glowicy <span class="age"></span></h2>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/attitude" data-kind="live"><h2>Orientacja <span class="age"></span></h2>
+    <div class="kv"></div><canvas data-plot="head/attitude:hdg_deg"></canvas></section>
+  <section class="card" data-topic="head/mag" data-kind="live"><h2>Magnetometr <span class="age"></span></h2>
+    <p class="note" style="margin:0">Wykres: pole poziome (skok = zaklocenie). Kalibracja w zakladce Kalibracje.</p>
+    <canvas data-plot="head/mag:field_h_ut"></canvas>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/sun" data-kind="live"><h2>Slonce (VEML7700) <span class="age"></span></h2>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/weather" data-kind="live"><h2>Pogoda (BME280) <span class="age"></span></h2>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/obstacles" data-kind="live"><h2>Przeszkody <span class="age"></span></h2>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/tags" data-kind="live"><h2>AprilTagi <span class="age"></span></h2>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/cam" data-kind="live"><h2>Kamera znacznikow <span class="age"></span></h2>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/hello" data-kind="state"><h2>HELLO glowicy <span class="age"></span></h2>
+    <div class="kv"></div></section>
+
+  <div class="subhead">Wlasne WiFi glowicy
+    <span class="muted">headstatus, head/boot, head/ota, head/log - niezalezne od UART. Komendy headcmd/* w zakladce Serwis.</span></div>
+  <section class="card" data-topic="head/boot" data-kind="state"><h2>Start glowicy <span class="age"></span></h2>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="head/ota" data-kind="state"><h2>OTA glowicy <span class="age"></span></h2>
+    <div class="kv"></div></section>
+</div>
+
+<!-- ================= KALIBRACJE ================= -->
+<div class="tab grid" data-tab="kalib" hidden>
+  <div class="subhead">Glowica <span class="muted">komendy ida cmd/ do bryly i dalej UART, wynik wraca z retain</span></div>
+  <section class="card" data-topic="head/mag_cal" data-kind="state"><h2>Magnetometr i zyro <span class="age"></span></h2>
+    <div class="row" style="margin-top:0">
+      <button id="magcal-auto">kalibruj (obrot robota 40 s)</button>
+      <button id="magcal-manual">kalibruj (recznie 60 s)</button>
+      <button id="gyrocal">kalibruj zyro</button>
+    </div>
+    <p class="note">Najpierw poziom (karta obok). Z dala od aut, stali i zbrojonego betonu.
+      Recznie: 2-3 pelne obroty wokol pionu. Zyro: robot nieruchomo 2 s.</p>
+    <p class="note">Ostatni wynik - cal_status: 0 ok, 1 za malo probek, 2 niepelny obrot, 3 brak elipsy,
+      4 duzy rozrzut, 5 elipsa zbyt splaszczona (zelazo przy czujniku).</p>
+    <div class="kv" style="margin-top:6px"></div></section>
+  <section class="card" data-topic="head/level_cal" data-kind="state"><h2>Poziom <span class="age"></span></h2>
+    <div class="row" style="margin-top:0">
+      <button id="level-auto">poziom (auto, obrot 180)</button>
+      <button id="level-flat">poziom (plasko)</button>
+    </div>
+    <p class="note">Robic PRZED magnetometrem. Ostatni wynik - lvl_status: 0 zapisane, 1 ruch w trakcie,
+      2 brak kroku 1, 3 krok 1 ok (obroc o 180 i krok 2).</p>
+    <div class="kv" style="margin-top:6px"></div></section>
+  <section class="card" data-topic="head/mag" data-kind="live"><h2>Magnetometr na zywo <span class="age"></span></h2>
+    <p class="note" style="margin:0">Podglad w trakcie kalibracji: mag_collecting, pole poziome.</p>
+    <canvas data-plot="head/mag:field_h_ut"></canvas>
+    <div class="kv"></div></section>
+
+  <div class="subhead">Bryla</div>
+  <section class="card" data-topic="config_cal" data-kind="state"><h2>Pompka i INA226 <span class="age"></span></h2>
+    <div class="row" style="margin-top:0">
+      pompka: <button id="pump-10s">pompuj 10 s</button>
+      zmierzone <input id="pump-ml" type="number" step="1" style="width:70px"> ml
+      <button id="pump-cal">zapisz</button>
+    </div>
+    <div class="row">
+      INA226: multimetr <input id="ina-a" type="number" step="0.001" style="width:70px"> A
+      <button id="ina-cal">zapisz</button>
+    </div>
+    <p class="note">INA226: prad &gt;= 0,3 A, dziala po restarcie.</p>
+    <div class="kv" style="margin-top:6px"></div></section>
+  <section class="card" data-topic="tele/pid" data-kind="state" id="c-pid"><h2>PID predkosci <span class="age"></span></h2>
+    <div class="row" style="margin-top:0">
+      tryb <button id="mode-pwm">pwm</button><button id="mode-pid">pid</button>
+      <span id="mode-now" class="muted"></span>
+    </div>
+    <div class="row">
+      kp <input id="pid_kp" type="number" step="0.01" style="width:60px">
+      ki <input id="pid_ki" type="number" step="0.01" style="width:60px">
+      kd <input id="pid_kd" type="number" step="0.001" style="width:60px">
+    </div>
+    <div class="row">
+      kff <input id="pid_kff" type="number" step="0.01" style="width:60px">
+      ks <input id="pid_ks" type="number" step="0.5" style="width:60px">
+      acc <input id="pid_acc" type="number" step="50" style="width:60px">
+      vmax <input id="pid_vmax" type="number" step="10" style="width:60px">
+    </div>
+    <div class="row">
+      skok <input id="step-v" type="number" value="150" style="width:60px"> mm/s
+      <input id="step-ms" type="number" value="2000" style="width:60px"> ms
+      <button id="pid-step">skok</button>
+    </div>
+    <p class="note">
+      Pole wysyla sie po zmianie (Enter albo wyjscie z pola). Dane plyna tylko przy jezdzie
+      w trybie pid. Wykresy: niebieski = zadana, pomaranczowy = pomiar; gora lewe, dol prawe kolo.</p>
+    <canvas data-plot="tele/pid:sp_l,v_l"></canvas>
+    <canvas data-plot="tele/pid:sp_r,v_r"></canvas>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="config_nav" data-kind="state"><h2>Parametry nawigacji <span class="age"></span></h2>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="tele/track_cal" data-kind="state"><h2>Ostatni pomiar rozstawu <span class="age"></span></h2>
+    <p class="note" style="margin:0 0 6px">Komenda cmd/track_cal.</p>
+    <div class="kv"></div></section>
+  <section class="card" data-topic="tele/wheel_cal" data-kind="state"><h2>Ostatni pomiar kola <span class="age"></span></h2>
+    <p class="note" style="margin:0 0 6px">Komenda cmd/wheel_cal.</p>
+    <div class="kv"></div></section>
+</div>
+
+<!-- ================= SERWIS ================= -->
+<div class="tab grid" data-tab="serwis" hidden>
+  <div class="subhead">Bryla <span class="muted">komendy cmd/*</span></div>
+  <section class="card" data-topic="config" data-kind="state"><h2>Ustawienia bryly (NVS) <span class="age"></span></h2>
+    <div class="kv"></div>
+    <div class="row">
+      <select id="cfg-key">
+        <option value="mqtt_uri">mqtt_uri</option>
+        <option value="wifi_ssid">wifi_ssid</option>
+        <option value="wifi_pass">wifi_pass</option>
+        <option value="mqtt_user">mqtt_user</option>
+        <option value="mqtt_pass">mqtt_pass</option>
+        <option value="soil_dry">soil_dry</option>
+        <option value="soil_wet">soil_wet</option>
+      </select>
+      <input id="cfg-val" type="text" style="width:150px">
+      <button id="cfg-save">zapisz</button>
+    </div>
+    <div class="row">
+      <input id="log-val" type="text" placeholder="flora_sonar D" title="tag i poziom: &lt;tag|*&gt; &lt;E|W|I|D|V&gt;" style="width:130px" autocomplete="off">
+      <button id="log-set">poziom logow</button>
+    </div>
+    <div class="row"><button id="reboot" class="danger">restart bryly</button></div>
+    <p class="note">
+      Siec i broker dzialaja po restarcie. Zly adres nie odetnie robota:
+      wroci do ustawien wkompilowanych. Wartosc "-" kasuje ustawienie.</p>
+  </section>
+  <section class="card" data-topic="tele/ota" data-kind="state"><h2>OTA bryly <span class="age"></span></h2>
     <div class="kv"></div>
     <progress id="ota-pct" max="100" value="0" style="width:100%;margin-top:6px" hidden></progress>
     <div class="row"><button id="ota-latest">aktualizuj do najnowszej</button></div>
@@ -261,13 +429,15 @@
       <input id="ota-ver" type="text" placeholder="hub-v1.2.0" style="width:110px" autocomplete="off">
       <button id="ota-ver-go">zainstaluj</button>
     </div>
-    <p class="muted" style="margin:8px 0 0;font-size:12px">
+    <p class="note">
       Naped i pompka musza stac. Robot pobiera z serwera, restartuje sie, a nowa
       wersja potwierdza sie sama po minucie polaczenia - inaczej wraca stara.</p>
   </section>
-  <section class="card" data-topic="head/boot"><h2>Start glowicy <span class="age"></span></h2>
+  <section class="card" data-topic="tele/boot" data-kind="state"><h2>Start bryly <span class="age"></span></h2>
     <div class="kv"></div></section>
-  <section class="card" data-topic="head/ota"><h2>Glowica: serwis i OTA <span class="age"></span></h2>
+
+  <div class="subhead">Glowica <span class="muted">komendy headcmd/* - wlasnym WiFi glowicy, dzialaja tez bez UART</span></div>
+  <section class="card" data-topic="head/ota" data-kind="state"><h2>OTA glowicy <span class="age"></span></h2>
     <div class="kv"></div>
     <progress id="hota-pct" max="100" value="0" style="width:100%;margin-top:6px" hidden></progress>
     <div class="row"><button id="hota-latest">aktualizuj glowice do najnowszej</button></div>
@@ -275,7 +445,10 @@
       <input id="hota-ver" type="text" placeholder="head-v1.2.0" style="width:110px" autocomplete="off">
       <button id="hota-ver-go">zainstaluj</button>
     </div>
-    <div class="row">
+    <p class="note">Wersje glowicy to tagi head-v...</p>
+  </section>
+  <section class="card action"><h2>Ustawienia glowicy</h2>
+    <div class="row" style="margin-top:0">
       <input id="hlog-val" type="text" placeholder="slow D" title="tag i poziom: &lt;tag|*&gt; &lt;E|W|I|D|V&gt;" style="width:110px" autocomplete="off">
       <button id="hlog-set">poziom logow</button>
     </div>
@@ -291,60 +464,25 @@
       <button id="hcfg-save">zapisz</button>
     </div>
     <div class="row"><button id="hreboot" class="danger">restart glowicy</button></div>
-    <p class="muted" style="margin:8px 0 0;font-size:12px">
-      Glowica ma wlasne WiFi i polaczenie z brokerem, niezalezne od lacza w maszcie
-      (komendy headcmd/...). Ustawienia sieci dzialaja po restarcie glowicy,
-      "-" kasuje. Wersje glowicy to tagi head-v...</p>
+    <p class="note">
+      Ustawienia sieci dzialaja po restarcie glowicy, "-" kasuje.</p>
   </section>
-  <section class="card" data-topic="head/link"><h2>Lacze glowicy <span class="age"></span></h2>
+  <section class="card" data-topic="head/boot" data-kind="state"><h2>Start glowicy <span class="age"></span></h2>
     <div class="kv"></div></section>
-  <section class="card" data-topic="head/attitude"><h2>Orientacja <span class="age"></span></h2>
-    <div class="kv"></div><canvas data-plot="head/attitude:hdg_deg"></canvas></section>
-  <section class="card" data-topic="head/sun"><h2>Slonce <span class="age"></span></h2>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="head/weather"><h2>Pogoda (BME280) <span class="age"></span></h2>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="head/status"><h2>Glowica <span class="age"></span></h2>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="head/hello"><h2>HELLO glowicy <span class="age"></span></h2>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="head/obstacles"><h2>Przeszkody <span class="age"></span></h2>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="head/tags"><h2>AprilTagi <span class="age"></span></h2>
-    <div class="kv"></div></section>
-  <section class="card" data-topic="head/cam"><h2>Kamera znacznikow <span class="age"></span></h2>
-    <div class="kv"></div></section>
+</div>
 
-  <section class="card" data-topic="config"><h2>Ustawienia (NVS) <span class="age"></span></h2>
-    <div class="kv"></div>
-    <div class="row">
-      <select id="cfg-key">
-        <option value="mqtt_uri">mqtt_uri</option>
-        <option value="wifi_ssid">wifi_ssid</option>
-        <option value="wifi_pass">wifi_pass</option>
-        <option value="mqtt_user">mqtt_user</option>
-        <option value="mqtt_pass">mqtt_pass</option>
-        <option value="soil_dry">soil_dry</option>
-        <option value="soil_wet">soil_wet</option>
-      </select>
-      <input id="cfg-val" type="text" style="width:150px">
-      <button id="cfg-save">zapisz</button>
-    </div>
-    <div class="row"><button id="reboot" class="danger">restart robota</button></div>
-    <p class="muted" style="margin:8px 0 0;font-size:12px">
-      Siec i broker dzialaja po restarcie. Zly adres nie odetnie robota:
-      wroci do ustawien wkompilowanych. Wartosc "-" kasuje ustawienie.</p>
-  </section>
-
+<!-- ================= LOGI ================= -->
+<div class="tab grid" data-tab="logi" hidden>
   <section class="card wide">
     <h2>Logi robota
+      <span>
       <select id="robotlog-src" style="font-size:11px" title="ktora jednostka">
         <option value="">bryla + glowica</option>
         <option value="bryla">tylko bryla</option>
         <option value="glowica">tylko glowica</option>
       </select>
-      <button id="robotlog-clear" style="font-size:11px;padding:1px 6px">wyczysc</button></h2>
-    <div id="robotlog" class="muted">brak - bryla i glowica wysylaja zawsze W i E, caly start po polaczeniu, a wiecej na zadanie: cmd/log "flora_sonar D", headcmd/log "slow D"</div>
+      <button id="robotlog-clear" style="font-size:11px;padding:1px 6px">wyczysc</button></span></h2>
+    <div id="robotlog" class="muted">brak - bryla i glowica wysylaja zawsze W i E, caly start po polaczeniu, a wiecej na zadanie (Serwis: poziom logow)</div>
   </section>
 
   <section class="card wide">
@@ -355,7 +493,9 @@
     </div>
     <div id="log"></div>
   </section>
+</div>
 </main>
+</div>
 
 <script>
 "use strict";
@@ -399,6 +539,8 @@ function connect() {
   client = mqtt.connect($("url").value, opts);
   client.on("connect", () => {
     setPill("conn", true, "broker: polaczony");
+    $("hdr").classList.add("connected");
+    $("hdr").classList.remove("showlogin");
     rememberCredentials();
     client.subscribe(base + "/#");
     /* Robot po restarcie wraca do domyslnej mocy - wyrownujemy z suwakiem. */
@@ -415,16 +557,22 @@ function connect() {
   });
   client.on("close", () => {
     setPill("conn", false, lastError ? "broker: " + lastError : "broker: rozlaczony");
+    $("hdr").classList.remove("connected");
   });
   client.on("connect", () => { lastError = ""; });
   client.on("message", onMessage);
 }
 
 function setPill(id, ok, text) {
+  setPillCls(id, ok ? "ok" : "bad", text);
+}
+function setPillCls(id, cls, text) {
   const el = $(id);
   el.textContent = text;
-  el.className = "pill " + (ok ? "ok" : "bad");
+  el.className = "pill " + cls;
 }
+/* Klik w pigulke brokera pokazuje schowane po polaczeniu logowanie. */
+$("conn").onclick = () => $("hdr").classList.toggle("showlogin");
 
 function send(cmd, payload) {
   if (client && client.connected) {
@@ -449,11 +597,11 @@ function onMessage(topic, buf) {
   logLine(rel, text);
 
   if (rel === "status") {
-    setPill("robot", text === "online", "robot: " + text);
+    setPill("robot", text === "online", "bryla: " + text);
     return;
   }
   if (rel === "headstatus") {
-    setPill("headpill", text === "online", "glowica: " + text);
+    setPill("headpill", text === "online", "glowica WiFi: " + text);
     return;
   }
   if (rel === "tele/log" || rel === "head/log") {
@@ -472,9 +620,13 @@ function onMessage(topic, buf) {
   try { data = JSON.parse(text); } catch (e) { return; }
   lastSeen[rel] = Date.now();
 
-  const card = document.querySelector('.card[data-topic="' + rel + '"]');
-  const kv = card && card.querySelector(".kv");
-  if (kv) { renderKv(kv, data); }
+  /* Ten sam temat moze miec karte w kilku zakladkach (np. orientacja
+   * w Jezdzie i w Glowicy) - odswiezamy wszystkie. */
+  for (const card of document.querySelectorAll('.card[data-topic="' + rel + '"]')) {
+    const kv = card.querySelector(".kv");
+    if (kv) { renderKv(kv, data); }
+  }
+  statusStrip(rel, data);
   if (rel === "tele/sonar") { sonarView(data); }
   if (rel === "tele/ota") { otaProgress(data, "ota-pct"); }
   if (rel === "head/ota") { otaProgress(data, "hota-pct"); }
@@ -516,6 +668,27 @@ function renderKv(el, data) {
 
 function markStall(stall) {
   $("stall-clear").classList.toggle("danger", stall && stall !== "none");
+}
+
+/* ---- pasek stanu: najwazniejsze z tematow, ktore i tak przychodza ---- */
+/* Pigulka -> temat; bez swiezych danych updateAges() zmienia ja na "?". */
+const STRIP = {
+  uartpill: "head/link", mastpill: "tele/mast", pwrpill: "tele/power",
+  waterpill: "tele/water", stallpill: "tele/drive",
+};
+function statusStrip(rel, d) {
+  if (rel === "head/link") {
+    setPill("uartpill", d.up === true, "UART: " + (d.up ? "ok" : "zerwany"));
+  } else if (rel === "tele/mast") {
+    setPillCls("mastpill", d.on ? "ok" : "warn", "maszt: " + (d.on ? "ON" : "OFF"));
+  } else if (rel === "tele/power" && typeof d.v === "number") {
+    setPillCls("pwrpill", "", d.v.toFixed(1) + " V  " + (d.a ?? 0).toFixed(2) + " A");
+  } else if (rel === "tele/water") {
+    setPill("waterpill", d.present === true, "zbiornik: " + (d.present ? "woda" : "pusty"));
+  } else if (rel === "tele/drive") {
+    const st = d.stall && d.stall !== "none";
+    setPill("stallpill", !st, st ? "UTYK: " + d.stall : "utyk: nie");
+  }
 }
 
 /* ---- logi robota: najnowsze na gorze ---- */
@@ -567,6 +740,7 @@ $("clear").onclick = () => $("log").replaceChildren();
 const COLORS = ["#4c9aff", "#f0883e"];
 function drawPlots() {
   for (const cv of document.querySelectorAll("canvas[data-plot]")) {
+    if (cv.offsetParent === null) { continue; }   // ukryta zakladka - szerokosc 0
     const [topic, fields] = cv.dataset.plot.split(":");
     const w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1;
     if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
@@ -598,40 +772,92 @@ function drawPlots() {
   }
 }
 
-/* ---- wiek danych: wyszarzenie kart, ktore przestaly przychodzic ---- */
-/* Karta szarzeje, gdy jej temat milczy dluzej niz ~3 okresy publikacji
- * (hub_telemetry.c). null = temat przychodzi tylko przy polaczeniu albo
- * zdarzeniu (z retain), wiec cisza po nim jest normalna i karta nie szarzeje. */
-const STALE_DEFAULT_S = 15;
-const STALE_AFTER_S = {
-  "config": null,          // przy polaczeniu i zmianie
-  "tele/boot": null,       // przy polaczeniu
-  "tele/ota": null,        // przy aktualizacji
-  "head/boot": null,       // przy polaczeniu glowicy z brokerem
-  "head/ota": null,        // przy aktualizacji glowicy
-  "head/mag_cal": null,    // po kalibracji (retain)
-  "head/level_cal": null,  // po kalibracji (retain)
-  "config_drive": null,    // przy polaczeniu i zmianie
-  "config_cal": null,      // przy polaczeniu i zmianie
-  "tele/pid": null,        // tylko w trakcie jazdy w trybie pid
-  "head/hello": null,      // po starcie glowicy
+/* ---- wiek danych: co gasnie, a co nie ---- */
+/* Tylko karty data-kind="live" (strumien okresowy) gasna, gdy temat milczy
+ * dluzej niz ~3 okresy publikacji (hub_telemetry.c, head_slow.c). Karty
+ * "state" pokazuja, jak dawno byl ostatni stan, i nigdy nie gasna - przychodza
+ * przy polaczeniu, po zdarzeniu albo z retain, wiec cisza jest normalna. */
+const LIVE_DEFAULT_S = 15;
+const LIVE_LIMIT_S = {
   "tele/sys": 20,          // co 5 s
   "tele/mast": 20,         // co 5 s albo przy zmianie
-  "head/weather": 40,      // co 10 s
   "head/status": 20,       // co 5 s
+  "head/weather": 40,      // co 10 s
+  "head/link": 10,         // co 2 s
 };
+const liveLimit = (topic) => LIVE_LIMIT_S[topic] ?? LIVE_DEFAULT_S;
+
+function agoText(s) {
+  if (s < 1) { return "teraz"; }
+  if (s < 120) { return s.toFixed(0) + " s"; }
+  if (s < 7200) { return (s / 60).toFixed(0) + " min"; }
+  return (s / 3600).toFixed(0) + " h";
+}
+
 function updateAges() {
   const now = Date.now();
+  const warnTabs = new Set();
   for (const card of document.querySelectorAll(".card[data-topic]")) {
-    const t = lastSeen[card.dataset.topic];
+    const topic = card.dataset.topic;
+    const live = card.dataset.kind === "live";
     const age = card.querySelector(".age");
-    if (!t) { age.textContent = "brak danych"; card.classList.add("stale"); continue; }
-    const s = (now - t) / 1000;
-    age.textContent = s < 1 ? "teraz" : s.toFixed(0) + " s temu";
-    const limit = STALE_AFTER_S[card.dataset.topic] ?? STALE_DEFAULT_S;
-    card.classList.toggle("stale", limit !== null && s > limit);
+    const t = lastSeen[topic];
+    let stale = false, silent = false;
+    if (!t) {
+      age.textContent = live ? "brak danych" : "jeszcze nie bylo";
+      stale = live;
+    } else {
+      const s = (now - t) / 1000;
+      silent = live && s > liveLimit(topic);
+      stale = silent;
+      age.textContent = silent ? "cisza " + agoText(s)
+        : s < 1 ? "teraz" : (live ? "" : "ostatnio ") + agoText(s) + " temu";
+    }
+    card.classList.toggle("stale", stale);
+    age.classList.toggle("bad", silent);
+    /* Kropka na zakladce tylko gdy cos plynelo i ucichlo - temat, ktory
+     * nigdy nie przyszedl (np. brak czujnika), nie krzyczy bez konca. */
+    const tab = card.closest(".tab");
+    if (silent && tab) { warnTabs.add(tab.dataset.tab); }
+  }
+  for (const b of document.querySelectorAll("#tabs button")) {
+    b.classList.toggle("warn", warnTabs.has(b.dataset.tab));
+  }
+  for (const [id, topic] of Object.entries(STRIP)) {
+    const t = lastSeen[topic];
+    if (!t || (now - t) / 1000 > liveLimit(topic)) {
+      const el = $(id);
+      el.textContent = el.dataset.label + ": ?";
+      el.className = "pill unk";
+    }
   }
 }
+
+/* ---- zakladki: pamietane w przegladarce i w #adresie ---- */
+const TABS = [...document.querySelectorAll("#tabs button")].map((b) => b.dataset.tab);
+function showTab(name) {
+  if (!TABS.includes(name)) { name = TABS[0]; }
+  for (const el of document.querySelectorAll(".tab")) { el.hidden = el.dataset.tab !== name; }
+  for (const b of document.querySelectorAll("#tabs button")) {
+    b.classList.toggle("on", b.dataset.tab === name);
+  }
+  save("flora.tab", name);
+  if (location.hash.slice(1) !== name) { history.replaceState(null, "", "#" + name); }
+  drawPlots();
+}
+for (const b of document.querySelectorAll("#tabs button")) {
+  b.onclick = () => showTab(b.dataset.tab);
+}
+window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+showTab(location.hash.slice(1) || load("flora.tab", TABS[0]));
+
+/* Wysokosc naglowka zmienia sie z szerokoscia okna i schowanym logowaniem,
+ * a od niej zalezy, gdzie przykleja sie kolumna sterowania. */
+if (matchMedia("(min-width: 761px)").matches) { $("drive-more").open = true; }
+
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty("--hdr", $("hdr").offsetHeight + "px");
+}).observe($("hdr"));
 
 setInterval(() => { drawPlots(); updateAges(); }, 250);
 
@@ -664,7 +890,7 @@ document.addEventListener("visibilitychange", () => {
 
 /* Spacja = STOP, strzalki = kierunek. */
 document.addEventListener("keydown", (e) => {
-  if (e.target.tagName === "INPUT") { return; }
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) { return; }
   const map = { ArrowUp: "fwd", ArrowDown: "back", ArrowLeft: "left", ArrowRight: "right", " ": "stop" };
   if (map[e.key]) { e.preventDefault(); setDrive(map[e.key]); }
 });
@@ -756,6 +982,11 @@ $("hlog-set").onclick = () => {
   if (/^\S+ [EWIDV]$/.test(v)) { sendHead("log", v); }
   else { badAck("log glowicy: podaj tag i poziom, np. slow D albo * I"); }
 };
+$("log-set").onclick = () => {
+  const v = $("log-val").value.trim();
+  if (/^\S+ [EWIDV]$/.test(v)) { send("log", v); }
+  else { badAck("log bryly: podaj tag i poziom, np. flora_sonar D albo * I"); }
+};
 $("hcfg-save").onclick = () => {
   const v = $("hcfg-val").value.trim();
   if (v) { sendHead("config/" + $("hcfg-key").value, v); $("hcfg-val").value = ""; }
@@ -772,14 +1003,14 @@ $("reboot").onclick = () => {
   if (rebootArmed) {
     clearTimeout(rebootArmed);
     rebootArmed = null;
-    $("reboot").textContent = "restart robota";
+    $("reboot").textContent = "restart bryly";
     send("reboot", "1");
     return;
   }
   $("reboot").textContent = "na pewno? kliknij jeszcze raz";
   rebootArmed = setTimeout(() => {
     rebootArmed = null;
-    $("reboot").textContent = "restart robota";
+    $("reboot").textContent = "restart bryly";
   }, 3000);
 };
 
