@@ -1,7 +1,9 @@
 idf_component_register(SRCS "main.c" "bringup_drive.c" "bringup_hydro.c" "bringup_sensors.c" "bringup_net.c" "bringup_power.c"
                             "hub_links.c" "hub_telemetry.c" "hub_remote.c" "hub_config.c" "hub_diag.c" "hub_ota.c" "hub_drive.c" "hub_nav.c" "hub_headcal.c" "hub_params.c" "hub_rec.c" "hub_sensorcal.c"
+                            "hub_autocfg.c" "hub_auto.c" "hub_safety.c" "hub_pilot.c" "hub_power.c" "hub_water.c" "hub_mission.c"
                        INCLUDE_DIRS "."
                        REQUIRES flora_board flora_motors flora_encoders flora_pid flora_nav flora_ina226
+                                flora_guard flora_pilot flora_water flora_seek flora_mission flora_energy
                                 flora_pump flora_temp flora_soil flora_sonar
                                 flora_link flora_msgs flora_store flora_mqtt flora_wifi flora_pwrsw flora_level
                                 flora_net flora_diag flora_ota

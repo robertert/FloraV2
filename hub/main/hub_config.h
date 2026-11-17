@@ -20,6 +20,9 @@
  *   ina_shunt (mOhm)                - dziala po restarcie
  *   track_mm, wheel_mm, wheel_ratio, cam_x_mm, cam_y_mm,
  *   site_lat, site_lon, mag_decl    - dzialaja od razu, patrz hub_params.h
+ *   guard_en, pilot_en, water_en, mission_en, sleep_en, mdd_key_en
+ *   oraz progi g_*, p_*, w_*, s_*, e_* - funkcje autonomiczne, domyslnie
+ *                                     wylaczone, patrz hub_autocfg.h
  *
  * Wartosc "-" dla kluczy tekstowych kasuje klucz (wraca wartosc
  * wkompilowana, czyli serwer i login robot1 z flora_board.h).
@@ -34,5 +37,7 @@ esp_err_t hub_config_set(const char *key, const char *value);
 
 /** Publikuje biezace ustawienia (retain, bez hasla): config (siec, gleba),
  *  config_drive (naped, PID), config_cal (pompka, INA226), config_nav
- *  (geometria, hub_params.h) i config_tags/<id> (mapa palikow). */
+ *  (geometria, hub_params.h), config_tags/<id> (mapa palikow) oraz
+ *  config_auto, config_guard, config_pilot, config_water, config_seek,
+ *  config_energy (hub_autocfg.h). */
 void hub_config_publish(void);

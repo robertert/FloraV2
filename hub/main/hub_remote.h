@@ -17,6 +17,11 @@
  *   cmd/drive_power  0..100, moc dla cmd/drive (domyslnie 30);
  *                    w trybie pid procent pid_vmax
  *   cmd/pid_step     "<mm_s> <ms>", skok predkosci do strojenia (tylko tryb pid)
+ *   cmd/goto         "<x_mm> <y_mm> [th_deg]" | "stop", jazda do punktu, hub_pilot.h
+ *   cmd/turn         "<th_deg>", obrot w miejscu do kursu, hub_pilot.h
+ *   cmd/area         "xmin ymin xmax ymax" | "-", obszar roboczy misji, hub_mission.h
+ *   cmd/mission      seek | reset | stop, hub_mission.h
+ *   cmd/water        reset, zatrzask awarii podlewania, hub_water.h
  *   cmd/pose_reset   "<x_mm> <y_mm> <th_deg>" albo pusty = (0, 0, 0), patrz hub_nav.h
  *   cmd/mag_cal      "auto [s]" | "manual [s]", kalibracja magnetometru, hub_headcal.h
  *   cmd/head_gyro_cal dowolny, kalibracja offsetu zyro glowicy (robot nieruchomo)

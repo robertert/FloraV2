@@ -70,6 +70,8 @@ static bool s_drive_ok, s_pump_ok, s_soil_ok, s_sonar_ok, s_temp_ok;
 static bool temp_init(void);
 static void sonar_task(void *arg);
 static SemaphoreHandle_t s_sonar_lock;
+/** Odczyt ADC gleby z dwoch zadan (telemetria i hub_water) - po kolei. */
+static SemaphoreHandle_t s_soil_lock;
 
 /** Powod ostatniego zakonczenia pompki; -1 gdy jeszcze nie pracowala. */
 static volatile int s_pump_last_reason = -1;
@@ -220,7 +222,8 @@ static void soil_init(void)
         cfg.raw_wet = wet;
         flora_store_close(store);
     }
-    s_soil_ok = (flora_soil_init(&cfg) == ESP_OK);
+    s_soil_lock = xSemaphoreCreateMutex();
+    s_soil_ok = s_soil_lock && (flora_soil_init(&cfg) == ESP_OK);
     if (!s_soil_ok) {
         ESP_LOGW(TAG, "czujnik gleby niedostepny");
     }
@@ -407,11 +410,14 @@ static void pub_soil(void)
 {
     int raw = 0, mv = 0;
     float pct = NAN;
+    xSemaphoreTake(s_soil_lock, portMAX_DELAY);
     if (flora_soil_read_raw(&raw) != ESP_OK) {
+        xSemaphoreGive(s_soil_lock);
         return;
     }
     flora_soil_read_mv(&mv);
     flora_soil_read_percent(&pct);
+    xSemaphoreGive(s_soil_lock);
     char b[16];
     flora_mqtt_publish_fmt("tele/soil", 0, false,
                            "{\"raw\":%d,\"mv\":%d,\"pct\":%s}",
@@ -511,6 +517,43 @@ static void sonar_task(void *arg)
         }
         xSemaphoreGive(s_sonar_lock);
     }
+}
+
+float hub_telemetry_sonar_near(int index)
+{
+    if (!s_sonar_ok || index < 0 || index >= SONAR_N) {
+        return NAN;
+    }
+    const int sel = s_sonar_sel;
+    if (sel >= 0 && sel != index) {
+        return NAN;
+    }
+    float near = NAN;
+    xSemaphoreTake(s_sonar_lock, portMAX_DELAY);
+    const sonar_hist_t *h = &s_sonar[index];
+    for (int k = 0; k < h->filled; k++) {
+        if (!isnan(h->mm[k]) && (isnan(near) || h->mm[k] < near)) {
+            near = h->mm[k];
+        }
+    }
+    xSemaphoreGive(s_sonar_lock);
+    return near;
+}
+
+esp_err_t hub_telemetry_soil_read(float *pct)
+{
+    if (!s_soil_ok) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    xSemaphoreTake(s_soil_lock, portMAX_DELAY);
+    const esp_err_t err = flora_soil_read_percent(pct);
+    xSemaphoreGive(s_soil_lock);
+    return err;
+}
+
+bool hub_telemetry_water_present(void)
+{
+    return s_level ? flora_level_water_present(s_level) : true;
 }
 
 static int cmp_float(const void *a, const void *b)

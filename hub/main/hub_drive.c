@@ -22,6 +22,8 @@
 #include "esp_timer.h"
 
 #include "hub_drive.h"
+#include "hub_power.h"
+#include "hub_safety.h"
 #include "flora_board.h"
 #include "flora_encoders.h"
 #include "flora_motors.h"
@@ -52,6 +54,7 @@ static struct {
     float   v_l, v_r;             /**< zmierzona, przefiltrowana */
     bool    active;
     int64_t step_until_us;        /**< 0 = brak testu skoku */
+    int64_t hold_until_us;        /**< 0 = zadana bez terminu waznosci */
 
     flora_encoders_sample_t prev;
     bool                    have_prev;
@@ -68,6 +71,7 @@ static void halt_locked(void)
     s_d.target_l = s_d.target_r = 0.0f;
     s_d.sp_l = s_d.sp_r = 0.0f;
     s_d.step_until_us = 0;
+    s_d.hold_until_us = 0;
     s_d.active = false;
     flora_pid_reset(&s_d.pid_l);
     flora_pid_reset(&s_d.pid_r);
@@ -108,6 +112,16 @@ static void loop_tick(void *arg)
 
     if (s_d.mode != HUB_DRIVE_MODE_PID || dt <= 0.0f) {
         s_d.active = false;
+        /* Tryb pwm: moc zadana wprost zostaje na silnikach do nastepnej
+         * komendy, wiec straznika trzeba pytac takze tutaj - przeszkoda
+         * moze pojawic sie juz w trakcie jazdy. Przy wylaczonym strazniku
+         * permit zwraca 1 i nic sie nie dzieje. */
+        float pl, pr;
+        flora_motors_get_last(&pl, &pr);
+        if ((pl != 0.0f || pr != 0.0f) && hub_safety_permit(pl, pr) <= 0.0f) {
+            ESP_LOGW(TAG, "straznik zatrzymal naped (moc %.0f / %.0f)", pl, pr);
+            flora_motors_stop();
+        }
         goto out;
     }
 
@@ -125,9 +139,26 @@ static void loop_tick(void *arg)
         s_d.step_until_us = 0;
         s_d.target_l = s_d.target_r = 0.0f;
     }
+    if (s_d.hold_until_us && now.timestamp_us >= s_d.hold_until_us) {
+        /* Nikt nie odswiezyl zadanej z terminem - hamujemy po rampie. */
+        s_d.hold_until_us = 0;
+        s_d.target_l = s_d.target_r = 0.0f;
+    }
 
-    s_d.sp_l = ramp(s_d.sp_l, s_d.target_l, dt);
-    s_d.sp_r = ramp(s_d.sp_r, s_d.target_r, dt);
+    /* Straznik: brak zgody na zadany ruch zatrzymuje od razu, bez rampy;
+     * limit mocy (pelzanie) skaluje zadana. Wylaczony zwraca 1. */
+    const float permit = hub_safety_permit(s_d.target_l, s_d.target_r);
+    if (permit <= 0.0f) {
+        if (s_d.active || s_d.sp_l != 0.0f || s_d.sp_r != 0.0f) {
+            ESP_LOGW(TAG, "straznik zatrzymal naped (zadana %.0f / %.0f mm/s)",
+                     s_d.target_l, s_d.target_r);
+        }
+        halt_locked();
+        goto out;
+    }
+
+    s_d.sp_l = ramp(s_d.sp_l, s_d.target_l * permit, dt);
+    s_d.sp_r = ramp(s_d.sp_r, s_d.target_r * permit, dt);
 
     /* Rampa doszla do zera: wybieg zamiast regulowania wokol zera, ktore
      * dawaloby brzeczenie i drganie kol na postoju. */
@@ -242,11 +273,17 @@ bool hub_drive_ready(void)
     return s_d.ready;
 }
 
-esp_err_t hub_drive_set_speed(float left_mm_s, float right_mm_s)
+static esp_err_t set_speed(float left_mm_s, float right_mm_s, uint32_t hold_ms)
 {
     ESP_RETURN_ON_FALSE(s_d.ready, ESP_ERR_INVALID_STATE, TAG, "petla nie dziala");
     if (flora_motors_is_stalled()) {
         return ESP_ERR_INVALID_STATE;
+    }
+    if (hub_safety_permit(left_mm_s, right_mm_s) <= 0.0f) {
+        return ESP_ERR_NOT_ALLOWED;
+    }
+    if (left_mm_s != 0.0f || right_mm_s != 0.0f) {
+        hub_power_drive_wake();   /* klucz sterownika; bez mdd_key_en nic nie robi */
     }
     xSemaphoreTake(s_d.lock, portMAX_DELAY);
     esp_err_t err = ESP_OK;
@@ -257,9 +294,32 @@ esp_err_t hub_drive_set_speed(float left_mm_s, float right_mm_s)
         s_d.target_l = fmaxf(-v, fminf(v, left_mm_s));
         s_d.target_r = fmaxf(-v, fminf(v, right_mm_s));
         s_d.step_until_us = 0;   /* zwykla jazda przejmuje od testu skoku */
+        s_d.hold_until_us = hold_ms ? esp_timer_get_time() + (int64_t)hold_ms * 1000 : 0;
     }
     xSemaphoreGive(s_d.lock);
     return err;
+}
+
+esp_err_t hub_drive_set_speed(float left_mm_s, float right_mm_s)
+{
+    return set_speed(left_mm_s, right_mm_s, 0);
+}
+
+esp_err_t hub_drive_set_speed_hold(float left_mm_s, float right_mm_s, uint32_t hold_ms)
+{
+    return set_speed(left_mm_s, right_mm_s, hold_ms ? hold_ms : 1);
+}
+
+esp_err_t hub_drive_set_power(float left, float right)
+{
+    const float permit = hub_safety_permit(left, right);
+    if (permit <= 0.0f) {
+        return ESP_ERR_NOT_ALLOWED;
+    }
+    if (left != 0.0f || right != 0.0f) {
+        hub_power_drive_wake();
+    }
+    return flora_motors_set(left * permit, right * permit);
 }
 
 esp_err_t hub_drive_stop(void)
@@ -282,6 +342,10 @@ esp_err_t hub_drive_step(float mm_s, uint32_t ms)
     if (flora_motors_is_stalled()) {
         return ESP_ERR_INVALID_STATE;
     }
+    if (hub_safety_permit(mm_s, mm_s) <= 0.0f) {
+        return ESP_ERR_NOT_ALLOWED;
+    }
+    hub_power_drive_wake();
     xSemaphoreTake(s_d.lock, portMAX_DELAY);
     esp_err_t err = ESP_OK;
     if (s_d.mode != HUB_DRIVE_MODE_PID) {
@@ -289,6 +353,7 @@ esp_err_t hub_drive_step(float mm_s, uint32_t ms)
     } else if (fabsf(mm_s) > s_d.vmax) {
         err = ESP_ERR_INVALID_ARG;
     } else {
+        s_d.hold_until_us = 0;
         s_d.target_l = s_d.target_r = mm_s;
         s_d.step_until_us = esp_timer_get_time() + (int64_t)ms * 1000;
         ESP_LOGI(TAG, "skok %.0f mm/s przez %" PRIu32 " ms", mm_s, ms);

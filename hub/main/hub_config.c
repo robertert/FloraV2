@@ -14,6 +14,7 @@
 #include "esp_log.h"
 
 #include "hub_config.h"
+#include "hub_autocfg.h"
 #include "hub_drive.h"
 #include "hub_nav.h"
 #include "hub_params.h"
@@ -199,6 +200,12 @@ esp_err_t hub_config_set(const char *key, const char *value)
         if (idx >= 0) {
             err = set_pid(idx, value);
         } else {
+            /* Przelaczniki i progi autonomii: wlasna przestrzen NVS, wlasne
+             * tematy config_*, publikuja sie same. */
+            err = hub_autocfg_set(key, value);
+            if (err != ESP_ERR_NOT_SUPPORTED) {
+                return err;
+            }
             /* Parametry nawigacji same sie publikuja (config_nav). */
             err = hub_params_set(key, value);
             if (err == ESP_OK) {
@@ -283,4 +290,5 @@ void hub_config_publish(void)
                            ina_saved, hub_sensorcal_ina_shunt_active());
     hub_params_publish();
     hub_nav_tags_publish();
+    hub_autocfg_publish();
 }

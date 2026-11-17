@@ -49,8 +49,27 @@ esp_err_t hub_drive_start(void);
 /** false, gdy naped nie wystartowal - wtedy reszta API zwraca ESP_ERR_INVALID_STATE. */
 bool hub_drive_ready(void);
 
-/** Zadana predkosc kol (mm/s), przycinana do +-pid_vmax. Tylko w trybie pid. */
+/**
+ * Zadana predkosc kol (mm/s), przycinana do +-pid_vmax. Tylko w trybie pid.
+ * @return ESP_ERR_NOT_ALLOWED gdy straznik (hub_safety) nie pozwala na ten ruch
+ */
 esp_err_t hub_drive_set_speed(float left_mm_s, float right_mm_s);
+
+/**
+ * Jak hub_drive_set_speed, ale zadana wygasa po hold_ms bez odswiezenia
+ * (petla sama hamuje do zera). Dla sterowania z zadania na robocie
+ * (hub_pilot): zawieszone zadanie nie zostawi jadacego robota.
+ */
+esp_err_t hub_drive_set_speed_hold(float left_mm_s, float right_mm_s, uint32_t hold_ms);
+
+/**
+ * Surowa moc kol w procentach (-100..100), dla trybu pwm i kalibracji.
+ * JEDYNE wejscie do flora_motors_set poza petla PID: przechodzi przez
+ * straznika i klucz sterownika silnikow. Przy wylaczonym strazniku to
+ * dokladnie flora_motors_set.
+ * @return ESP_ERR_NOT_ALLOWED gdy straznik nie pozwala na ten ruch
+ */
+esp_err_t hub_drive_set_power(float left, float right);
 
 /**
  * Natychmiastowe zatrzymanie, bez rampy, w kazdym trybie.

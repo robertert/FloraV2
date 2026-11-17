@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
 #include "flora_ina226.h"
@@ -34,6 +35,24 @@ flora_ina226_handle_t hub_telemetry_ina(void);
 
 /** Czas pracy ostatniej dawki pompki [ms]; 0 gdy jeszcze nie pracowala. */
 uint32_t hub_telemetry_pump_last_ms(void);
+
+/**
+ * Najblizsze echo dalmierza `index` (0 = A przod lewy, 1 = B przod prawy,
+ * 2 = C tyl) z okna ostatnich pomiarow [mm]. NAN, gdy w oknie nie ma zadnego
+ * echa, dalmierz jest wylaczony z testu (cmd/sonar) albo niedostepny.
+ * Minimum, nie mediana: dla weta napedu grozny jest odczyt za daleki.
+ */
+float hub_telemetry_sonar_near(int index);
+
+/**
+ * Wilgotnosc gleby [%] - odczyt teraz, pod wspolna blokada z telemetria.
+ * @return ESP_ERR_INVALID_STATE bez czujnika albo bez kalibracji
+ */
+esp_err_t hub_telemetry_soil_read(float *pct);
+
+/** Woda w zbiorniku (stan uspokojony). Bez czujnika poziomu zwraca true -
+ *  tak samo jak pompka, ktora wtedy nie ma ochrony przed praca na sucho. */
+bool hub_telemetry_water_present(void);
 
 /**
  * Wybor dalmierza do testu po kolei: "a" | "b" | "c" (tylko ten, co 200 ms)

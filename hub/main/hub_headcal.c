@@ -75,7 +75,7 @@ static bool rotate_dir(int dir)
         float v = dir * 0.5f * p.track_mm * ROT_DPS * 3.14159265f / 180.0f;
         return hub_drive_set_speed(-v, v) == ESP_OK;
     }
-    return flora_motors_set(-dir * ROT_PWM, dir * ROT_PWM) == ESP_OK;
+    return hub_drive_set_power(-dir * ROT_PWM, dir * ROT_PWM) == ESP_OK;
 }
 
 static bool rotate(void)
@@ -336,7 +336,7 @@ static void wheel_go(float dist_mm)
     bool ok = false;
     for (int t = 0; t < max_ms; t += 50) {
         esp_err_t e = pid ? hub_drive_set_speed(WHEEL_SPEED_MM_S, WHEEL_SPEED_MM_S)
-                          : flora_motors_set(WHEEL_PWM, WHEEL_PWM);
+                          : hub_drive_set_power(WHEEL_PWM, WHEEL_PWM);
         if (flora_motors_is_stalled() || e != ESP_OK) {
             break;
         }

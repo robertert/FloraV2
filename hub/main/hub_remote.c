@@ -25,6 +25,11 @@
 #include "hub_drive.h"
 #include "hub_sensorcal.h"
 #include "hub_headcal.h"
+#include "hub_autocfg.h"
+#include "hub_mission.h"
+#include "hub_pilot.h"
+#include "hub_power.h"
+#include "hub_water.h"
 #include "hub_nav.h"
 #include "hub_rec.h"
 #include "hub_ota.h"
@@ -73,6 +78,10 @@ static esp_err_t cmd_drive(const char *arg)
     if (hub_ota_in_progress() && strcmp(arg, "stop") != 0) {
         return ESP_ERR_INVALID_STATE;
     }
+    /* Reczna komenda ma pierwszenstwo przed autonomia: pilot konczy zadanie,
+     * misja ustepuje na minute. Bez wlaczonych modulow oba wywolania sa puste. */
+    hub_pilot_cancel();
+    hub_mission_note_manual();
     float p = (float)s_drive_power;
     float l, r;
     if      (strcmp(arg, "fwd")   == 0) { l =  p; r =  p; }
@@ -94,7 +103,7 @@ static esp_err_t cmd_drive(const char *arg)
         float k = hub_drive_vmax() / 100.0f;
         err = hub_drive_set_speed(l * k, r * k);
     } else {
-        err = flora_motors_set(l, r);
+        err = hub_drive_set_power(l, r);
     }
     s_driving = (err == ESP_OK);
     return err;
@@ -207,6 +216,7 @@ static esp_err_t cmd_reboot(void)
             return err;
         }
     }
+    hub_pilot_cancel();
     hub_drive_stop();
     flora_pump_stop();
     ESP_LOGW(TAG, "restart na zadanie z brokera");
@@ -238,8 +248,15 @@ static void on_cmd(const char *topic, size_t topic_len,
     }
     arg[n] = 0;
 
+    hub_power_note_activity();
+
     esp_err_t err;
     if      (strcmp(cmd, "drive") == 0)       { err = cmd_drive(arg); }
+    else if (strcmp(cmd, "goto") == 0)        { err = hub_pilot_cmd_goto(arg); }
+    else if (strcmp(cmd, "turn") == 0)        { err = hub_pilot_cmd_turn(arg); }
+    else if (strcmp(cmd, "area") == 0)        { err = hub_autocfg_area_cmd(arg); }
+    else if (strcmp(cmd, "mission") == 0)     { err = hub_mission_cmd(arg); }
+    else if (strcmp(cmd, "water") == 0)       { err = hub_water_cmd(arg); }
     else if (strcmp(cmd, "drive_power") == 0) { err = cmd_drive_power(arg); }
     else if (strcmp(cmd, "pump") == 0)        { err = cmd_pump(arg); }
     else if (strcmp(cmd, "mast") == 0)        { err = cmd_mast(arg); }

@@ -21,6 +21,8 @@
 #include "bringup_drive.h"
 #include "bringup_net.h"
 #include "bringup_power.h"
+#include "hub_auto.h"
+#include "hub_autocfg.h"
 #include "hub_diag.h"
 #include "hub_links.h"
 #include "hub_ota.h"
@@ -84,6 +86,10 @@ static void bringup_task(void *arg)
     bringup_net_connect();
     ESP_ERROR_CHECK(hub_telemetry_start(s_ina));
     hub_links_start();
+    /* Funkcje autonomiczne (straznik, pilot, podlewanie, misja, sen):
+     * wszystkie domyslnie wylaczone, przelaczniki w hub_autocfg.h. Przed
+     * komendami, zeby cmd/goto czy cmd/mission trafialy w gotowe moduly. */
+    hub_auto_start();
     if (hub_remote_start() != ESP_OK) {
         ESP_LOGE(TAG, "sterowanie przez MQTT niedostepne");
     }
@@ -107,6 +113,9 @@ void app_main(void)
     /* Odliczanie do potwierdzenia nowej wersji po OTA biegnie od startu. */
     hub_ota_check_pending();
     flora_store_report_space();
+    /* Przelaczniki autonomii przed sprzetem: petla napedu pyta o nie od
+     * pierwszego taktu. */
+    hub_autocfg_load();
 
     ina226_setup();
     xTaskCreate(bringup_task, "bringup", 4096, NULL, 5, NULL);

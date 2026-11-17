@@ -64,6 +64,9 @@
 #define FLORA_PIN_DS18B20 GPIO_NUM_41     /**< 1-Wire, + 4,7k do 3,3V */
 #define FLORA_PIN_MAST_SWITCH GPIO_NUM_39 /**< IRF4905 + NPN, klucz 12V masztu */
 #define FLORA_PIN_PUMP GPIO_NUM_40        /**< D4184, pompka perystaltyczna */
+/** Klucz 12 V sterownika MDD10A (osobny modul mocy, D-022): J4 pin 5,
+ *  pull-down 10k na PCB. Obslugiwany tylko przy mdd_key_en = 1 (hub_power). */
+#define FLORA_PIN_MDD_SWITCH GPIO_NUM_42
 
 /* ---- Parametry mechaniczne napedu ----
  * Enkoder daje 11 impulsow na obrot WALU SILNIKA. PCNT w trybie kwadraturowym
@@ -258,6 +261,12 @@
  * a hasla nie ma wcale. Ustawiane zdalnie: cmd/config/mqtt_user, mqtt_pass. */
 #define FLORA_NVS_MQTT_USER "mqtt_user"
 #define FLORA_NVS_MQTT_PASS "mqtt_pass"
+
+/* ---- Autonomia (hub_autocfg): straznik, pilot, podlewanie, misja, sen ----
+ * Wszystko domyslnie WYLACZONE; przelaczniki i progi w tej przestrzeni NVS,
+ * ustawiane przez cmd/config/<klucz>. Lista kluczy: hub/main/hub_autocfg.h. */
+#define FLORA_NVS_NS_AUTO "auto"
+#define FLORA_NVS_AUTO_AREA "area"   /**< obszar roboczy, 4 x float (cmd/area) */
 
 /* ---- Diagnostyka ---- */
 #define FLORA_NVS_NS_SYS "sys"
