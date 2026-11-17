@@ -49,7 +49,7 @@ run heading "$OUT/heading"
 
 # Funkcje autonomiczne (domyslnie wylaczone na robocie, hub_autocfg.h):
 # straznik, jazda do punktu, podlewanie, energia, szukanie slonca, misja.
-for c in guard pilot water energy; do
+for c in guard pilot water energy seek; do
     # shellcheck disable=SC2086
     $CC $CFLAGS -Iflora_$c/include -o "$OUT/$c" flora_$c/host/test.c flora_$c/flora_$c.c -lm
     run $c "$OUT/$c"
