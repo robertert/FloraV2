@@ -47,6 +47,14 @@ $CC $CFLAGS -Iflora_heading/include -I../node/main -o "$OUT/heading" flora_headi
     flora_heading/flora_magcal.c flora_heading/flora_hkf.c flora_heading/flora_magdist.c -lm
 run heading "$OUT/heading"
 
+# Funkcje autonomiczne (domyslnie wylaczone na robocie, hub_autocfg.h):
+# straznik, jazda do punktu, podlewanie, energia, szukanie slonca, misja.
+for c in guard; do
+    # shellcheck disable=SC2086
+    $CC $CFLAGS -Iflora_$c/include -o "$OUT/$c" flora_$c/host/test.c flora_$c/flora_$c.c -lm
+    run $c "$OUT/$c"
+done
+
 # Nagranie -> odtworzenie: syntetyczny przejazd przez replay (flora_navcore).
 NAVSRC="flora_nav/flora_navcore.c flora_nav/flora_ekf.c flora_nav/flora_sun.c flora_nav/flora_sungate.c"
 # shellcheck disable=SC2086
