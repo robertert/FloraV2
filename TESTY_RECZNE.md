@@ -30,7 +30,7 @@ cd ../../flora_pid/host   # komenda na gorze test.c
 ## 1. Glowica: kurs i przechyl (etap 1 i 2)
 
 Stara kalibracja magnetometru jest celowo niewazna (nowy klucz NVS
-`mag_cal_ok2`), wiec po wgraniu w logu bedzie "magnetometr BEZ kalibracji".
+`mag_cal_ok3`), wiec po wgraniu w logu bedzie "magnetometr BEZ kalibracji".
 
 - [ ] **Offset zyro**: robot nieruchomo, `cmd/head_gyro_cal`. Log:
       "offset wyznaczony", wartosci rzedu ulamka st/s.
@@ -169,3 +169,88 @@ stan i flagi `*_set` na `config_nav`.
 - [x] Wilgotnosc gleby (2026-10-15) - `FLORA_SOIL_RAW_DRY/WET`.
 - [ ] Pompka: `cmd/pump 10000` do menzurki, `cmd/pump_cal <ml>`.
 - [ ] INA226: staly prad >= 0,3 A z multimetrem, `cmd/ina_cal <A>`, restart.
+
+## 8. Funkcje autonomiczne (wszystkie domyslnie wylaczone)
+
+Kod nowy (17.11.2026), sprawdzony tylko testami hostowymi. Wlaczac PO
+KOLEI, kazda po zaliczeniu poprzedniej. Klucze: `hub/main/hub_autocfg.h`.
+Wymaga zaliczonych punktow 1-3 (kurs, EKF, PID).
+
+- [ ] **Po wgraniu nic sie nie zmienia**: `config_auto` pokazuje wszystkie
+      `*_en` = 0, reczna jazda, kalibracje i pompka dzialaja jak dotad.
+
+Straznik (`tele/safety`, pole `reasons`: 1 kamera, 2 sonary, 4 przechyl,
+8 napiecie, 16 stare dane):
+- [ ] Kola w powietrzu. `cmd/config/guard_mask 30` (bez kamery), potem
+      `cmd/config/guard_en 1`. Jazda z panelu dziala, `reasons` = 0.
+- [ ] Dlon 20 cm przed przednim dalmierzem: jazda w przod staje, `ack/drive`
+      daje `ESP_ERR_NOT_ALLOWED`, cofanie i obrot dzialaja. Po zabraniu dloni
+      rusza po ok. 0,5 s.
+- [ ] To samo z tylnym dalmierzem i cofaniem.
+- [ ] Ktory dalmierz jest ktory: A i B to przod, C to tyl (`near_a/b/c`
+      w `tele/sonar`). Zamienione = poprawic kolejnosc zlaczy albo
+      `hub_telemetry.c`.
+- [ ] Przechyl: podniesc robota z jednej strony ponad 20 st - wszystko
+      staje (`reasons` 4), po polozeniu wraca.
+- [ ] Odlaczyc glowice (`cmd/mast off`): `reasons` 16, jazda z panelu
+      zwalnia do 30%.
+- [ ] Na ziemi: dojazd do sciany i do kartonu - staje ok. 35 cm przed
+      (`g_front_mm`). Dobrac prog do drogi hamowania.
+- [ ] Z kamera w dol (po punkcie 6, wysokosc obiektywu wpisana):
+      `guard_mask 31`. Bez ramek przeszkod jazda w przod stoi - tak ma byc.
+      Przeszkoda w korytarzu jazdy zatrzymuje, z boku nie.
+
+Jazda do punktu (`tele/pilot`), naped w trybie pid:
+- [ ] Kola w powietrzu: `cmd/config/pilot_en 1`, `cmd/pose_reset`,
+      `cmd/goto "1000 0"` - oba kola do przodu; `cmd/goto stop` zatrzymuje
+      w ciagu ok. 0,3 s.
+- [ ] Na ziemi: `cmd/pose_reset`, `cmd/goto "1500 0"`, potem
+      `cmd/goto "1500 1000"`, `cmd/goto "0 0 0"`. Blad dojazdu z tasmy;
+      `state` konczy sie na `done`.
+- [ ] `cmd/turn 90`: obrot W LEWO o 90 st (kat mapy rosnie przeciwnie do
+      zegara). W prawo = zly znak, nie jechac dalej.
+- [ ] Reczna strzalka w panelu w trakcie `goto` przejmuje sterowanie.
+- [ ] Przeszkoda na drodze przy wlaczonym strazniku: staje, po 8 s
+      `failed / no_progress`.
+- [ ] Dobrac `p_vmax`, `p_wmax`, `p_tol_mm` na trawie.
+
+Podlewanie (`tele/water`), po `cmd/pump_cal`:
+- [ ] `cmd/config/w_soak_s 60` na czas prob, `cmd/config/water_en 1`.
+      Czujnik w powietrzu: po kilku sekundach `dosing`, pompka idzie
+      porcjami, razem `w_dose_ml` (menzurka), potem `soak`.
+- [ ] Czujnik do wody w trakcie: po wsiakaniu `ok`, pompka stoi.
+- [ ] Czujnik caly czas w powietrzu: po 3 dawkach `fault / no_rise`,
+      `cmd/water reset` zdejmuje.
+- [ ] Pusty zbiornik: `no_water`; po dolaniu wznawia.
+- [ ] W trakcie jazdy z panelu nie podlewa (`dry`).
+- [ ] Progi `w_dry` / `w_wet` dobrac w doniczce z docelowa ziemia,
+      `w_soak_s` wrocic na 600.
+
+Szukanie slonca (`tele/mission`), wymaga straznika, pilota, glowicy i czasu
+z sieci:
+- [ ] Najpierw sam pomiar: `mission_en 1` BEZ ustawionego obszaru (robot
+      wtedy nie ruszy, a `tele/mission` juz idzie). Zapisac `lux` i `contrast`
+      w pelnym sloncu i w cieniu. Kontrast w sloncu ma byc wyraznie ponad
+      0,25, w cieniu ponizej - inaczej poprawic `contrast_min`.
+- [ ] `cmd/area "xmin ymin xmax ymax"` wg mapy palikow, plac bez przeszkod.
+- [ ] `cmd/mission seek`: robot jedzie do punktu po stronie przeciwnej do
+      slonca, stoi 20 s, jedzie do kolejnych; konczy w najjasniejszym.
+      Zaden cel nie lezy blizej niz 400 mm od granicy obszaru.
+- [ ] Cien od parawanu: po `s_hold_s` i `s_dwell_s` (na probe skrocic do
+      60 / 120) rusza sam i konczy w sloncu.
+- [ ] `cmd/mission stop` w trakcie jazdy zatrzymuje i wylacza misje.
+- [ ] Reczna jazda wstrzymuje misje na minute (`hold`).
+
+Sen i energia (`tele/energy`):
+- [ ] `sleep_en 0`, wlaczony np. `water_en`: `mode` normal, `v_filt` zgodne
+      z miernikiem.
+- [ ] Zasilacz regulowany zamiast baterii: ponizej 12,6 V `save`, ponizej
+      12,2 V `survival`, powrot dopiero 0,3 V wyzej.
+- [ ] `cmd/config/e_day_s 60`, `cmd/config/sleep_en 1`: po 2 min od
+      ostatniej komendy `tele/sleep`, robot znika na minute i wraca
+      (`tele/boot`), poza w `tele/pose` zachowana.
+- [ ] Wybudzanie na stale: `mosquitto_pub -r -t flora/robot1/cmd/config/sleep_en -m 0`,
+      po powrocie robota skasowac retain (`-r -n`). `e_day_s` wrocic na 0.
+- [ ] Klucz MDD10A (po zbudowaniu modulu): `mdd_key_en 1`, pierwsza
+      komenda jazdy rusza po ok. 0,1 s, 10 s po zatrzymaniu pobor spada
+      o ok. 50 mA.

@@ -235,7 +235,8 @@ palcem po ekranie. Sesje lezą w `tools/vision/data/` i NIE sa w repo.
 
 ## Testy hostowe
 
-Filtry, kalibracje i regulator to czysty C - sprawdzane na komputerze, takze
+Filtry, kalibracje, regulator i logika funkcji autonomicznych to czysty C -
+sprawdzane na komputerze, takze
 w CI przy kazdym pushu (`.github/workflows/tests.yml`), z AddressSanitizer
 i UBSan:
 
@@ -292,13 +293,49 @@ samych klatkach. Uwaga: harness NIE wykryje bledow pamieci, bo na komputerze
 stos ma megabajty - tak przeszlo przepelnienie stosu, ktore na ESP wywalalo
 zadanie po dwoch sekundach.
 
+## Funkcje autonomiczne (domyslnie WYLACZONE)
+
+Kod petli wysokiego poziomu jest w firmware bryly, ale kazda funkcja ma
+wlasny przelacznik w NVS i po wgraniu wszystkie sa na 0 - robot zachowuje
+sie jak bez nich. Wlaczanie pojedynczo, bez flashowania:
+
+```sh
+mosquitto_pub -t flora/robot1/cmd/config/guard_en -m 1
+mosquitto_sub -t 'flora/robot1/config_auto' -v    # stan przelacznikow
+```
+
+| Przelacznik | Co wlacza | Logika (czysty C, test hostowy) | Na robocie | Stan |
+|---|---|---|---|---|
+| `guard_en` | straznik napedu: weto przeszkod (kamera, sonary), przechyl, napiecie, stare dane | `flora_guard` | `hub_safety` | `tele/safety` |
+| `pilot_en` | jazda do punktu: `cmd/goto "x y [th]"`, `cmd/turn "th"` | `flora_pilot` | `hub_pilot` | `tele/pilot` |
+| `water_en` | podlewanie z histereza wilgotnosci | `flora_water` | `hub_water` | `tele/water` |
+| `mission_en` | szukanie slonca: ucieczka z cienia w granicach `cmd/area` | `flora_seek`, `flora_mission` | `hub_mission` | `tele/mission` |
+| `sleep_en` | gleboki sen i wylaczanie masztu wg napiecia i pory | `flora_energy` | `hub_power` | `tele/energy` |
+| `mdd_key_en` | klucz 12 V sterownika MDD10A na GPIO42 | - | `hub_power` | - |
+
+Progi i pelna lista kluczy: `hub/main/hub_autocfg.h`. Opis kazdego modulu
+w jego naglowku. Kolejnosc wlaczania i testy: `TESTY_RECZNE.md`, punkt 8.
+
+Wszystkie zadania mocy na silniki ida przez `hub_drive` (`hub_drive_set_power`,
+`hub_drive_set_speed`), ktory pyta straznika o zgode - takze reczna jazda
+z panelu i kalibracje. Przy `guard_en = 0` straznik zawsze sie zgadza.
+
+Spiacego robota wylacza sie wiadomoscia z retain, ktora odbierze po
+najblizszym wybudzeniu:
+`mosquitto_pub -r -t flora/robot1/cmd/config/sleep_en -m 0`.
+
 ## Stan
 
-Bryla ma sterowniki napedu, enkoderow i pomiaru pradu, telemetrie MQTT i
-zdalne sterowanie z panelu. Glowica ma petle czujnikow (fuzja kursu, kompas
-sloneczny, BME280), oba lacza UART i kamere OV5640 z obiektywem 160 stopni
-patrzaca w dol z masztu, na razie w trybie podgladu. Wykrywanie przeszkod jest
-w planie: kontrakt `FLORA_MSG_OBSTACLES` i publikacja na MQTT juz istnieja,
-brakuje producenta w glowicy i weta napedu w bryle.
+Bryla ma naped z petla predkosci, odometrie i EKF pozycji, pomiar pradu,
+czujniki (gleba, poziom wody, dalmierze, DS18B20), telemetrie MQTT, OTA
+i zdalne sterowanie z panelu. Glowica ma fuzje kursu, kompas sloneczny,
+BME280, oba lacza UART i kamere OV5640 160 stopni patrzaca w dol; wykrywanie
+przeszkod liczy 16 sektorow i wysyla je do bryly (centymetry dopiero po
+wpisaniu wysokosci obiektywu). Osobna plytka z kamera pozioma wykrywa
+znaczniki AprilTag.
+
+Petle wysokiego poziomu (straznik, jazda do punktu, podlewanie, szukanie
+slonca, sen) sa napisane i przetestowane na komputerze, ale NIE sprawdzone
+na sprzecie i domyslnie wylaczone - patrz wyzej.
 
 **Uwaga przy uruchamianiu testu napedu: kola musza byc w powietrzu.**

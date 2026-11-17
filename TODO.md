@@ -81,11 +81,86 @@ Testy lokalizacji zrodla (patrz `field_ut` w head/mag, 1 Hz):
 - magnes do srub, wkretow i elementow obok ICM (stal przyciaga);
 - glowica na maszcie, maszt bez zasilania vs z zasilaniem (prad).
 
-## Straznicy napedu i bezpieczenstwa (odlozone - brak czesci sprzetu)
+## Funkcje autonomiczne - napisane 17.11.2026, do sprawdzenia na sprzecie
+
+W firmware bryly, domyslnie wylaczone (przelaczniki w `hub_autocfg.h`,
+tabela w README). Testy hostowe przechodza, na robocie NIC z tego jeszcze
+nie jechalo. Kolejnosc prob: `TESTY_RECZNE.md`, punkt 8.
+
+- [ ] straznik (`guard_en`): punkty 1-4 z listy nizej
+- [ ] jazda do punktu (`pilot_en`)
+- [ ] podlewanie (`water_en`)
+- [ ] szukanie slonca (`mission_en`)
+- [ ] sen (`sleep_en`) i klucz MDD10A (`mdd_key_en`, czeka na modul klucza)
+
+Swiadomie pominiete, do dopisania pozniej:
+- karty w panelu (`tools/dashboard`) - na razie `mosquitto_sub` / `mosquitto_pub`;
+- stan szukania slonca (postoj, przerwa po nieudanym szukaniu) ginie przy
+  glebokim snie - do przeniesienia do pamieci RTC, gdy sen w dzien bedzie uzywany;
+- wylaczanie WiFi glowicy poza serwisem (bilans energii);
+- dawka pompki skalowana napieciem szyny (12,0-14,6 V);
+- prog kontrastu krzyza VEML dla "swiatla bezposredniego" (`contrast_min`
+  0,25 w `flora_seek.h`) jest zalozony, nie zmierzony - porownac `contrast`
+  w `tele/mission` w sloncu i w cieniu.
+
+### Licznik kulombow (stan naladowania baterii)
+
+Polityka energii (`flora_energy`) decyduje dzis po napieciu, a to przy
+LiFePO4 4S malo mowi: miedzy ~30 a ~90 % napiecie spoczynkowe zmienia sie
+o ok. 0,3 V (13,0-13,3 V), tyle co szum i temperatura. Do tego slabe
+ladowanie z panelu (< 0,8 A, przechodzi przez filtr) zawyza napiecie
+i pusta bateria wyglada w dzien na pelna. Progi 12,6 / 12,2 V to w praktyce
+jazda do ok. 10 % - malo zapasu na pochmurny tydzien.
+
+- [ ] nowy komponent `flora_soc` (czyste C + `host/test.c`): calka pradu
+  z INA226 (dodatni = pobor) w Ah i Wh, SoC = kotwica - Ah / pojemnosc
+- [ ] kotwice: 100 % na koncu ladowania (napiecie > ~14 V i prad ladowania
+  spada), dol krzywej po odpoczynku (< ~12,8 V, tam napiecie juz cos mowi)
+- [ ] stan w pamieci RTC (`RTC_DATA_ATTR`, przezywa deep sleep) i co jakis
+  czas w NVS; czas snu doliczany jako staly prad snu (zmierzony raz)
+- [ ] `flora_energy` po SoC w % zamiast po napieciu; napiecie zostaje tylko
+  jako twarde zabezpieczenie w strazniku (11,8 V)
+- [ ] `tele/energy`: SoC, Ah i Wh pobrane / oddane na dobe - to od razu
+  "Bilans energii" z listy pod prace dyplomowa
+
+### Kalibracja na zlozonym robocie (gdy wszystko bedzie spiete)
+
+Wszystkie progi i czasy w funkcjach autonomicznych sa zalozone albo
+zmierzone na stole (zasilacz laboratoryjny 12,0 / 13,07 V, glowica
+prawdopodobnie z USB, bez kamer i czesci czujnikow). Do powtorzenia na
+docelowym robocie, na baterii:
+
+- [ ] pobor w spoczynku z rozbiciem na odbiorniki (`tele/power`): bryla
+  sama, + maszt (glowica BEZ USB), + MDD10A bez klucza, z kluczem;
+  na stole wylaczenie masztu dalo tylko ~15 mA, co nie pasuje do glowicy
+  z kamera i wizja
+- [ ] prad w deep sleep (do licznika kulombow) i koszt jednego wybudzenia
+- [ ] bilans dobowy: Wh z panelu 20 W vs zuzycie, osobno zima i lato;
+  z niego czasy snu (`e_night_s`, `e_day_s`)
+- [ ] progi trybow energii (`e_v_save`, `e_v_surv`) albo progi SoC po
+  wdrozeniu licznika
+- [ ] UWAGA przy testach na zasilaczu: 12,0 V < `e_v_surv` 12,2 V, wiec
+  polityka od razu wchodzi w SURVIVAL (bez jazdy, bez podlewania, przy
+  `sleep_en` maszt gasnie) - ustawic zasilacz na ~13,2 V albo obnizyc progi
+- [ ] progi straznika: `g_front_mm`, `g_rear_mm` (droga hamowania przy
+  `pid_vmax`), przechyl, `g_v_stop` pod obciazeniem na baterii
+- [ ] podlewanie: `w_dry` / `w_wet` dla docelowej ziemi i rosliny, wzrost
+  wilgotnosci po dawce (`rise_min_pct`), czas wsiakania
+- [ ] szukanie slonca: `contrast_min` (patrz wyzej), `s_ratio`
+- [ ] pilot: `p_vmax`, `p_wmax`, tolerancja dojazdu po strojeniu PID
+
+## Straznicy napedu i bezpieczenstwa
 
 Stan obecny (`flora_motors`): utyk z bezruchu (moc >= 15%, < 5 impulsow
 przez 400 ms) i z nadpradu (> 2,5 A szyny przez 300 ms), zatrzask do
 `cmd/stall_clear`. Lapie tylko twarda blokade kola.
+
+Punkty 1-4 ponizej oraz "jedno waskie gardlo" sa w kodzie (`flora_guard`,
+`hub_safety`, `hub_drive_set_power`), wylaczone do czasu prob. Punkty 5-8
+nadal odlozone. Roznice wobec szkicu: poziomy to zgoda osobno na przod /
+tyl / obrot plus limit mocy (bez osobnego LATCH - zatrzask zostaje
+w `flora_motors`), straznik liczy sie we wlasnym zadaniu co 50 ms, a petla
+napedu co 20 ms tylko pyta o werdykt.
 
 ### Architektura
 - **Jedno waskie gardlo do silnikow.** Dzis `flora_motors_set` wolaja
@@ -157,6 +232,16 @@ Polecana kolejnosc: nagrywanie/odtwarzanie -> testy w CI -> DLI.
   `flora_ground` przy kazdym pushu.
 - **Zrzut przyczyny awarii** - coredump do flash, po restarcie skrot na
   MQTT (zadanie, adres, backtrace).
+
+- **Panel z telefonu** (jak starczy czasu) - pelne sterowanie i podglad
+  wszystkiego z telefonu "w razie czego". Punkt wyjscia jest: obecny panel
+  (`tools/dashboard/index.html`) ma juz viewport, uklad pod waskie ekrany
+  (`@media max-width 760px`) i laczy sie przez `wss://<serwer>/mqtt`
+  (Caddy), wiec dziala spoza domu. Do zrobienia: joystick dotykowy do
+  jazdy (z deadmanem jak dzis), karty nowych tematow (`tele/safety`,
+  `pilot`, `water`, `mission`, `energy`) z przelacznikami `*_en`, przyciski
+  awaryjne (stop, `cmd/mission stop`, `cmd/water reset`), dodanie do
+  ekranu startowego jako PWA (manifest + ikona).
 
 ### Funkcje "doniczkowe"
 - **Powiadomienia** - alerty Grafany albo bot Telegram: malo wody, niska
