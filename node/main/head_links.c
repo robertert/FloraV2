@@ -23,6 +23,7 @@
 #include "esp_timer.h"
 
 #include "head_links.h"
+#include "head_tunnel.h"
 #include "flora_head_board.h"
 #include "flora_link.h"
 #include "flora_msgs.h"
@@ -40,6 +41,7 @@ flora_link_handle_t head_link_up(void)   { return s_up; }
 static void on_down_state(bool up, void *ctx)
 {
     ESP_LOGI(TAG, "bryla: %s", up ? "polaczona" : "rozlaczona");
+    head_tunnel_link_state(up);
     if (!up) {
         return;
     }

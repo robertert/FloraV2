@@ -35,6 +35,7 @@
 #include "head_links.h"
 #include "head_net.h"
 #include "head_tags.h"
+#include "head_tunnel.h"
 #include "head_slow.h"
 
 #include "flora_head_board.h"
@@ -126,6 +127,9 @@ static void start_task(void *arg)
         vTaskDelete(NULL);
     }
     head_cmd_register(head_link_down());
+    /* TYMCZASOWE: most MQTT dla bryly bez WiFi (bierny, dopoki bryla nie
+     * zacznie nadawac przez tunel). */
+    head_tunnel_start(head_link_down());
 
     /* 3. Test rozruchowy czujnikow. Inicjalizuje je i zwraca uchwyty,
      *    wiec petla dostaje dokladnie te, ktore test sprawdzil. */

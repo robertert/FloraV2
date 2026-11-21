@@ -20,6 +20,7 @@
 
 #include "bringup_drive.h"
 #include "bringup_net.h"
+#include "hub_tunnel.h"
 #include "bringup_power.h"
 #include "hub_auto.h"
 #include "hub_autocfg.h"
@@ -32,6 +33,11 @@
 #include "flora_board.h"
 #include "flora_ina226.h"
 #include "flora_store.h"
+
+/* TYMCZASOWE (22.11.2026): ESP bryly po uszkodzeniu resetuje sie przy starcie
+ * WiFi. 1 = bez WiFi, MQTT przez UART i glowice (hub_tunnel.h). Po wymianie
+ * plytki wroc na 0. */
+#define TEST_MQTT_PRZEZ_GLOWICE 1
 
 static const char *TAG = "dol";
 
@@ -83,9 +89,14 @@ static void bringup_task(void *arg)
 
     /* Siec pierwsza, ale jej brak nie blokuje reszty: klient MQTT ponawia
      * w tle, a telemetria zacznie plynac, gdy broker sie pojawi. */
-    bringup_net_connect();
+    if (!TEST_MQTT_PRZEZ_GLOWICE) {
+        bringup_net_connect();
+    }
     ESP_ERROR_CHECK(hub_telemetry_start(s_ina));
     hub_links_start();
+    if (TEST_MQTT_PRZEZ_GLOWICE && hub_tunnel_start() != ESP_OK) {
+        ESP_LOGE(TAG, "tunel MQTT przez glowice nie ruszyl - zostaje tylko USB");
+    }
     /* Funkcje autonomiczne (straznik, pilot, podlewanie, misja, sen):
      * wszystkie domyslnie wylaczone, przelaczniki w hub_autocfg.h. Przed
      * komendami, zeby cmd/goto czy cmd/mission trafialy w gotowe moduly. */

@@ -59,6 +59,12 @@ $CC $CFLAGS -Iflora_mission/include -Iflora_seek/include -o "$OUT/mission" \
     flora_mission/host/test.c flora_mission/flora_mission.c flora_seek/flora_seek.c -lm
 run mission "$OUT/mission"
 
+# Tunel MQTT przez UART (tymczasowy, bryla bez WiFi).
+# shellcheck disable=SC2086
+$CC $CFLAGS -Iflora_tunnel/include -Iflora_msgs/include -o "$OUT/tunnel" \
+    flora_tunnel/host/test.c flora_tunnel/flora_tunnel.c
+run tunnel "$OUT/tunnel"
+
 # Nagranie -> odtworzenie: syntetyczny przejazd przez replay (flora_navcore).
 NAVSRC="flora_nav/flora_navcore.c flora_nav/flora_ekf.c flora_nav/flora_sun.c flora_nav/flora_sungate.c"
 # shellcheck disable=SC2086

@@ -30,6 +30,7 @@ static struct {
     sub_t subs[FLORA_MQTT_MAX_SUBS];
     bool connected;
     bool initialized;
+    flora_mqtt_proxy_fn proxy;     /**< tryb posrednika: zamiast klienta */
 } s_m;
 
 /** Skleja temat bazowy ze sciezka wzgledna. */
@@ -217,6 +218,14 @@ esp_err_t flora_mqtt_deinit(void)
 esp_err_t flora_mqtt_publish(const char *subtopic, const void *data, size_t len,
                              int qos, bool retain)
 {
+    if (s_m.proxy) {
+        /* Bez logow w tej sciezce: log idzie przez diagnostyke znowu do
+         * publikacji i zapetlilby sie. */
+        if (!s_m.connected) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        return s_m.proxy(subtopic, data, len, qos, retain);
+    }
     ESP_RETURN_ON_FALSE(s_m.initialized, ESP_ERR_INVALID_STATE, TAG, "nie zainicjalizowano");
     ESP_RETURN_ON_FALSE(s_m.connected, ESP_ERR_INVALID_STATE, TAG, "brak polaczenia z brokerem");
 
@@ -255,7 +264,8 @@ esp_err_t flora_mqtt_publish_fmt(const char *subtopic, int qos, bool retain,
 esp_err_t flora_mqtt_subscribe(const char *subtopic, int qos,
                                flora_mqtt_data_cb_t cb, void *ctx)
 {
-    ESP_RETURN_ON_FALSE(s_m.initialized, ESP_ERR_INVALID_STATE, TAG, "nie zainicjalizowano");
+    ESP_RETURN_ON_FALSE(s_m.initialized || s_m.proxy, ESP_ERR_INVALID_STATE, TAG,
+                        "nie zainicjalizowano");
     ESP_RETURN_ON_FALSE(cb, ESP_ERR_INVALID_ARG, TAG, "cb == NULL");
 
     char topic[TOPIC_MAX];
@@ -275,6 +285,11 @@ esp_err_t flora_mqtt_subscribe(const char *subtopic, int qos,
     s_m.subs[slot].ctx  = ctx;
     s_m.subs[slot].used = true;
 
+    if (s_m.proxy) {
+        /* Druga strona tunelu subskrybuje sama; tu tylko handler. */
+        ESP_LOGI(TAG, "subskrypcja \"%s\" (przez tunel)", topic);
+        return ESP_OK;
+    }
     /* Przy braku polaczenia zapamietujemy - odtworzymy po nawiazaniu. */
     if (s_m.connected) {
         int id = esp_mqtt_client_subscribe(s_m.client, topic, qos);
@@ -287,5 +302,34 @@ esp_err_t flora_mqtt_subscribe(const char *subtopic, int qos,
 
 bool flora_mqtt_is_connected(void)
 {
-    return s_m.initialized && s_m.connected;
+    return (s_m.initialized || s_m.proxy) && s_m.connected;
+}
+
+esp_err_t flora_mqtt_proxy_enable(const char *base_topic, flora_mqtt_proxy_fn fn)
+{
+    ESP_RETURN_ON_FALSE(fn, ESP_ERR_INVALID_ARG, TAG, "fn == NULL");
+    ESP_RETURN_ON_FALSE(!s_m.initialized && !s_m.proxy, ESP_ERR_INVALID_STATE, TAG,
+                        "klient juz dziala");
+    memset(&s_m, 0, sizeof(s_m));
+    if (base_topic) {
+        strncpy(s_m.base, base_topic, sizeof(s_m.base) - 1);
+    }
+    s_m.proxy = fn;
+    ESP_LOGW(TAG, "tryb posrednika: MQTT przez tunel, prefiks \"%s\"", s_m.base);
+    return ESP_OK;
+}
+
+void flora_mqtt_proxy_set_connected(bool connected)
+{
+    if (s_m.proxy) {
+        s_m.connected = connected;
+    }
+}
+
+void flora_mqtt_proxy_deliver(const char *topic, size_t topic_len,
+                              const char *data, size_t data_len)
+{
+    if (s_m.proxy) {
+        dispatch(topic, topic_len, data, data_len);
+    }
 }

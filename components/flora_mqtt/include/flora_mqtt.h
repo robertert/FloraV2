@@ -109,6 +109,26 @@ esp_err_t flora_mqtt_subscribe(const char *subtopic, int qos,
 
 bool flora_mqtt_is_connected(void);
 
+/* ---- Tryb posrednika (TYMCZASOWY, 22.11.2026) ----
+ * Bez klienta MQTT: publikacje ida do funkcji posrednika (tunel UART do
+ * glowicy), a wiadomosci przychodzace podaje flora_mqtt_proxy_deliver.
+ * Reszta firmware wola zwykle flora_mqtt_publish / subscribe i nic nie wie.
+ */
+
+/** Publikacja w trybie posrednika; temat WZGLEDNY (bez prefiksu). */
+typedef esp_err_t (*flora_mqtt_proxy_fn)(const char *subtopic, const void *data,
+                                         size_t len, int qos, bool retain);
+
+/** Wlacza tryb posrednika zamiast flora_mqtt_init. */
+esp_err_t flora_mqtt_proxy_enable(const char *base_topic, flora_mqtt_proxy_fn fn);
+
+/** Czy druga strona tunelu jest osiagalna (to zwraca is_connected). */
+void flora_mqtt_proxy_set_connected(bool connected);
+
+/** Wiadomosc z tunelu do handlerow subskrypcji; temat PELNY, z prefiksem. */
+void flora_mqtt_proxy_deliver(const char *topic, size_t topic_len,
+                              const char *data, size_t data_len);
+
 #ifdef __cplusplus
 }
 #endif

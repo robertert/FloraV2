@@ -61,6 +61,14 @@ typedef enum {
     /* --- bryla -> glowica --- */
     FLORA_MSG_CMD         = 0x20,  /**< flora_cmd_t, wymaga potwierdzenia */
     FLORA_MSG_TIME_SYNC   = 0x21,  /**< flora_time_sync_t */
+
+    /* --- tunel MQTT przez UART (TYMCZASOWY, 22.11.2026) ---
+     * Bryla bez WiFi (uszkodzone ESP nie wytrzymuje startu radia) wysyla
+     * publikacje do glowicy, a ta wystawia je na brokerze; komendy ida
+     * odwrotnie. Nowe typy bez zmiany ukladu starych - bez podbijania
+     * FLORA_MSGS_VERSION, stary tagcam dalej pasuje. */
+    FLORA_MSG_MQTT_UP     = 0x40,  /**< flora_mqtt_chunk_t, bryla -> glowica */
+    FLORA_MSG_MQTT_DOWN   = 0x41,  /**< flora_mqtt_chunk_t, glowica -> bryla */
 } flora_msg_type_t;
 
 /** Bity mapy obecnosci czujnikow w HELLO i HEAD_STATUS. */
@@ -309,6 +317,22 @@ typedef struct __attribute__((packed)) {
  * Zmiana ukladu wywali kompilacje tutaj, zamiast objawic sie smieciami
  * na kablu. Te same liczby sluza do walidacji dlugosci w parserze.
  */
+/** Kawalek wiadomosci MQTT w tunelu (FLORA_MSG_MQTT_UP / _DOWN).
+ *  Wiadomosc (temat + tresc) jest dzielona na kawalki po 60 B, skladane po
+ *  drugiej stronie wg id i idx (components/flora_tunnel). */
+typedef struct __attribute__((packed)) {
+    uint8_t id;              /**< numer wiadomosci, rosnie co wiadomosc */
+    uint8_t idx;             /**< numer kawalka od 0 */
+    uint8_t flags;           /**< FLORA_MQTT_CHUNK_* */
+    uint8_t n;               /**< bajtow w data */
+    uint8_t data[60];
+} flora_mqtt_chunk_t;
+
+#define FLORA_MQTT_CHUNK_LAST   0x01
+#define FLORA_MQTT_CHUNK_RETAIN 0x02
+#define FLORA_MQTT_CHUNK_QOS_SHIFT 2      /**< qos w bitach 2-3 */
+
+_Static_assert(sizeof(flora_mqtt_chunk_t) == 64, "flora_mqtt_chunk_t: 64 B, max ramki");
 _Static_assert(sizeof(flora_pong_t)        ==  4, "flora_pong_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_hello_t)       ==  8, "flora_hello_t: podbij FLORA_MSGS_VERSION");
 _Static_assert(sizeof(flora_attitude_t)    == 16, "flora_attitude_t: podbij FLORA_MSGS_VERSION");
@@ -353,6 +377,8 @@ static inline int flora_msgs_payload_size(uint8_t type)
         case FLORA_MSG_MAG_INFO:    return (int)sizeof(flora_mag_info_t);
         case FLORA_MSG_MAG_CAL_RESULT: return (int)sizeof(flora_mag_cal_result_t);
         case FLORA_MSG_LEVEL_CAL_RESULT: return (int)sizeof(flora_level_cal_result_t);
+        case FLORA_MSG_MQTT_UP:
+        case FLORA_MSG_MQTT_DOWN:   return (int)sizeof(flora_mqtt_chunk_t);
         default:                    return -1;
     }
 }
