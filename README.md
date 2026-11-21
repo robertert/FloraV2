@@ -267,9 +267,11 @@ Format linii: `components/flora_nav/include/flora_navlog.h`. Nagrania nie sa w r
 
 ## Wykrywanie przeszkod
 
-Glowica liczy 16 odleglosci i wysyla je w dol jako `FLORA_MSG_OBSTACLES`
-(`components/flora_ground` plus `node/main/head_obstacles.c`, 4 Hz). Bryla
-publikuje je na `head/obstacles`.
+Modul tagcam (kamera 160 stopni w dol) liczy 16 odleglosci i wysyla je
+przez glowice w dol jako `FLORA_MSG_OBSTACLES` (`components/flora_ground`
+plus `tagcam/main/main.c`, 4 Hz). Bryla publikuje je na `head/obstacles`.
+Do 21.11.2026 robila to glowica, a tagcam szukal znacznikow - role kamer
+zostaly zamienione.
 
 Nie uczymy sie, jak wyglada przeszkoda - w kazdej klatce od nowa uczymy sie,
 jak wyglada PODLOZE tuz przy kamerze, i szukamy, gdzie przestaje tak wygladac.
@@ -329,10 +331,11 @@ najblizszym wybudzeniu:
 Bryla ma naped z petla predkosci, odometrie i EKF pozycji, pomiar pradu,
 czujniki (gleba, poziom wody, dalmierze, DS18B20), telemetrie MQTT, OTA
 i zdalne sterowanie z panelu. Glowica ma fuzje kursu, kompas sloneczny,
-BME280, oba lacza UART i kamere OV5640 160 stopni patrzaca w dol; wykrywanie
-przeszkod liczy 16 sektorow i wysyla je do bryly (centymetry dopiero po
-wpisaniu wysokosci obiektywu). Osobna plytka z kamera pozioma wykrywa
-znaczniki AprilTag.
+BME280, oba lacza UART i kamere pozioma 68 stopni, ktora wykrywa znaczniki
+AprilTag (`node/main/head_tags.c`). Osobna plytka w maszcie (tagcam) ma
+kamere OV5640 160 stopni patrzaca w dol i wykrywa przeszkody: 16 sektorow
+idzie przez glowice do bryly (centymetry dopiero po wpisaniu wysokosci
+obiektywu).
 
 Petle wysokiego poziomu (straznik, jazda do punktu, podlewanie, szukanie
 slonca, sen) sa napisane i przetestowane na komputerze, ale NIE sprawdzone

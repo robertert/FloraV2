@@ -4,10 +4,11 @@
  *
  * Glowica jest posrodku lancucha:
  *
- *   MODUL ZNACZNIKOW --UART2--> GLOWICA --UART1--> BRYLA
+ *   MODUL PRZESZKOD (tagcam) --UART2--> GLOWICA --UART1--> BRYLA
  *
- * W maszcie biegnie tylko jeden kabel w dol, wiec modul kamery znacznikow
- * nie ma wlasnego polaczenia z bryla. Glowica przekazuje jego ramki dalej.
+ * W maszcie biegnie tylko jeden kabel w dol, wiec modul kamery (od
+ * 21.11.2026 wykrywa przeszkody; znaczniki liczy sama glowica) nie ma
+ * wlasnego polaczenia z bryla. Glowica przekazuje jego ramki dalej.
  *
  * Przekazywanie dziala BEZ pola adresu w ramce, bo typy wiadomosci sa
  * globalnie unikalne - bryla rozpoznaje nadawce po samym typie. Dzieki
@@ -29,7 +30,7 @@
 static const char *TAG = "lacza";
 
 static flora_link_handle_t s_down;   /**< do bryly */
-static flora_link_handle_t s_up;     /**< do modulu znacznikow */
+static flora_link_handle_t s_up;     /**< do modulu kamery przeszkod */
 
 static uint32_t s_tags_relayed;
 
@@ -54,7 +55,7 @@ static void on_down_state(bool up, void *ctx)
 
 static void on_up_state(bool up, void *ctx)
 {
-    ESP_LOGI(TAG, "modul znacznikow: %s", up ? "polaczony" : "rozlaczony");
+    ESP_LOGI(TAG, "modul przeszkod: %s", up ? "polaczony" : "rozlaczony");
 }
 
 /**
@@ -103,7 +104,7 @@ esp_err_t head_links_init(void)
         return ret;
     }
 
-    /* --- lacze w gore, do modulu znacznikow ---
+    /* --- lacze w gore, do modulu kamery przeszkod ---
      * Krotki odcinek w obrebie masztu, wiec mozna szybciej niz w dol. */
     flora_link_cfg_t up = FLORA_LINK_DEFAULT_CFG();
     up.name          = "gora";
@@ -118,9 +119,10 @@ esp_err_t head_links_init(void)
 
     ret = flora_link_init(&up, &s_up);
     if (ret != ESP_OK) {
-        /* Brak modulu znacznikow nie blokuje glowicy - czujniki i kamera
-         * przednia dzialaja dalej, tracimy tylko korekte pozycji. */
-        ESP_LOGW(TAG, "lacze w gore nie wystartowalo (%s) - modul znacznikow "
+        /* Brak modulu nie blokuje glowicy - czujniki i znaczniki dzialaja
+         * dalej, tracimy tylko przeszkody (straznik w bryle wtedy blokuje
+         * jazde naprzod przez brak swiezych danych). */
+        ESP_LOGW(TAG, "lacze w gore nie wystartowalo (%s) - modul przeszkod "
                       "bedzie niedostepny", esp_err_to_name(ret));
         s_up = NULL;
         return ESP_OK;
@@ -129,10 +131,13 @@ esp_err_t head_links_init(void)
     /* Ramki modulu kamery leca prosto w dol. HELLO modulu NIE jest
      * przekazywane - bryla ma dostac HELLO glowicy, nie dwa naraz;
      * obecnosc modulu zdradza sam fakt naplywania jego ramek. */
-    flora_link_on(s_up, FLORA_MSG_TAGS, relay_tags, NULL);
+    flora_link_relay(s_up, s_down, FLORA_MSG_OBSTACLES);
     flora_link_relay(s_up, s_down, FLORA_MSG_CAM_STATUS);
+    /* Stary tagcam (sprzed zamiany rol) nadal by dzialal - jego znaczniki
+     * tez leca w dol. */
+    flora_link_on(s_up, FLORA_MSG_TAGS, relay_tags, NULL);
 
-    ESP_LOGI(TAG, "glowica posrodku lancucha: modul znacznikow -> glowica -> bryla");
+    ESP_LOGI(TAG, "glowica posrodku lancucha: modul przeszkod -> glowica -> bryla");
     return ESP_OK;
 }
 

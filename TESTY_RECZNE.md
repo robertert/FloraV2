@@ -22,7 +22,9 @@ cd ../../flora_pid/host   # komenda na gorze test.c
 - [x] Wgrac RAZEM bryle i glowice. Zmienil sie znak `rate_z_cdps`
       w ATTITUDE (teraz tempo kursu, dodatnie w prawo) i doszla komenda
       `FLORA_CMD_SET_STILL` - stara glowica z nowa bryla da zle wyniki.
-- [ ] Tagcam tez wgrac (nowa odleglosc do znacznika).
+- [ ] Tagcam tez wgrac. Od 21.11.2026 role kamer zamienione: glowica
+      wykrywa znaczniki, tagcam przeszkody - wgrac OBA razem z przepieta
+      kamera (68 st na glowice, 160 st na tagcam).
 - [ ] Potwierdzic piny UART oznaczone `TODO potwierdzic`
       (`flora_head_board.h`, `flora_cam_board.h`) - jesli lacza dzialaja,
       zdjac komentarz.
@@ -129,9 +131,10 @@ stan i flagi `*_set` na `config_nav`.
 
 ## 4. Kamera znacznikow i mapa
 
-- [ ] **Ogniskowa** (`FLORA_CAM_FOCAL_PX`, dzis 297 z katalogu): znacznik
-      na wprost na zmierzonej odleglosci (np. 2000 mm), z logu tagcamu
-      bok w px, `focal = bok_px * odl_mm / 300`.
+- [ ] **Ogniskowa** (`FLORA_HEAD_TAG_FOCAL_PX` w `flora_head_board.h`,
+      dzis 297 z katalogu): znacznik 300 mm na wprost na zmierzonej
+      odleglosci (np. 2000 mm), z logu glowicy (`znaczniki`) odleglosc,
+      `focal = 297 * odl_zmierzona / odl_z_logu`.
 - [ ] **Odleglosc z ukosa** (nowy wzor z pionowych bokow): ten sam
       znacznik obrocony o 45 st wokol pionu, ta sama odleglosc - wynik
       w granicach ~3%. Potem znacznik przy brzegu kadru.
@@ -157,8 +160,8 @@ stan i flagi `*_set` na `config_nav`.
 
 ## 6. Przeszkody
 
-- [ ] **Wysokosc obiektywu** nad ziemia miarka, `FLORA_HEAD_CAM_HEIGHT_MM`
-      albo `http://<ip>/height?mm=NNN` (wymaga `FLORA_HEAD_CAM_NET_DEFAULT 1`).
+- [ ] **Wysokosc obiektywu** kamery tagcamu nad ziemia miarka,
+      `FLORA_CAM_HEIGHT_MM` w `flora_cam_board.h` i przeflashowac tagcam.
       Bez tego sektory ida jako "nie wiem".
 - [ ] Przeszkoda w 4 kierunkach na znanej odleglosci - zgodnosc cm
       w `head/obstacles`.

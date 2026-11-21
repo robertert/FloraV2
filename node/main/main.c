@@ -34,7 +34,7 @@
 #include "head_fusion.h"
 #include "head_links.h"
 #include "head_net.h"
-#include "head_obstacles.h"
+#include "head_tags.h"
 #include "head_slow.h"
 
 #include "flora_head_board.h"
@@ -43,8 +43,8 @@
 
 static const char *TAG = "glowica";
 
-/* TYMCZASOWE: test czujnikow na sucho bez podpietej kamery. Wroc na 0. */
-#define TEST_BEZ_KAMERY 1
+/* Test czujnikow na sucho bez podpietej kamery: 1 wylacza kamere i znaczniki. */
+#define TEST_BEZ_KAMERY 0
 
 static i2c_master_bus_handle_t s_bus;
 
@@ -165,10 +165,10 @@ static void start_task(void *arg)
         bringup_cam_offline();
     }
 
-    /* 6. Wykrywanie przeszkod. Rusza tylko w trybie surowym kamery, bo w
-     *    trybie podgladu JPEG nie ma czego przetwarzac. Brak wizji nie
-     *    przerywa startu - glowica dziala bez niej. */
-    head_obstacles_start(head_link_down());
+    /* 6. Znaczniki AprilTag (od 21.11.2026; przeszkody liczy tagcam).
+     *    Rusza tylko w trybie surowym kamery, bo w trybie podgladu JPEG nie
+     *    ma czego przetwarzac. Brak wizji nie przerywa startu. */
+    head_tags_start(head_link_down());
     }
 
     ESP_LOGI(TAG, "petla sterowania dziala");

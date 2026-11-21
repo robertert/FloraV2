@@ -16,10 +16,9 @@ execute_process(
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(node)
 
-# Glowica nie uzywa AprilTagow, ale wspolny flora_tags wciaga port AprilTag
-# z rejestru do kazdego projektu, a menedzer komponentow buduje go mimo
-# COMPONENTS/EXCLUDE_COMPONENTS. Port nie kompiluje sie na GCC 15 - to samo
-# obejscie co w hub/ i tagcam/CMakeLists.txt, tam jest pelne uzasadnienie.
+# Glowica wykrywa znaczniki AprilTag (head_tags.c), a port AprilTag z
+# rejestru nie kompiluje sie na GCC 15 - to samo obejscie co w hub/
+# i tagcam/CMakeLists.txt, tam jest pelne uzasadnienie.
 # Do usuniecia razem z tamtymi.
 idf_component_get_property(apriltag_lib liux-pro__apriltag COMPONENT_LIB)
 target_compile_options(${apriltag_lib} PRIVATE

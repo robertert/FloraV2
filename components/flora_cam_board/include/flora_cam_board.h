@@ -1,16 +1,18 @@
 /**
  * @file flora_cam_board.h
- * @brief Mapa pinow modulu kamery znacznikow (trzeci modul, w maszcie).
+ * @brief Mapa pinow modulu kamery przeszkod (trzeci modul, w maszcie).
  *
- * Modul ma JEDNO zadanie: szukac znacznikow AprilTag na palikach w rogach
- * obszaru roboczego i wysylac surowe detekcje w dol. Nie ma czujnikow
- * I2C ani nawigacji - te sa w glowicy.
+ * Modul ma JEDNO zadanie: wykrywanie przeszkod kamera z obiektywem
+ * 160 stopni patrzaca w dol (flora_ground) i wysylanie 16 sektorow
+ * (FLORA_MSG_OBSTACLES) w dol. Od 21.11.2026 - wczesniej robila to
+ * glowica, a ten modul szukal znacznikow AprilTag (te sa teraz na
+ * glowicy). Nie ma czujnikow I2C ani nawigacji.
  *
  * TOPOLOGIA: w maszcie biegnie tylko JEDEN kabel w dol, wiec ten modul nie
  * ma wlasnego lacza z bryla. Gada z glowica, a ta przekazuje jego ramki
  * dalej (patrz flora_link_relay).
  *
- *   MODUL ZNACZNIKOW  --UART--  GLOWICA  --UART--  BRYLA
+ *   MODUL PRZESZKOD  --UART--  GLOWICA  --UART--  BRYLA
  *
  * ================== DO POTWIERDZENIA ==================
  * Numery pinow sa WSTEPNE. Na plytkach z gniazdem kamery wiekszosc
@@ -77,69 +79,28 @@
         .xclk_freq_hz = 20000000,               \
     }
 
-/* ---- Parametry wyszukiwania znacznikow ----
- * Do ustalenia po wybraniu rozmiaru obszaru roboczego: od niego zalezy
- * fizyczny rozmiar znacznikow na palikach, a od tego zasieg wykrywania.
- */
-/**
- * Bok czarnego kwadratu znacznika. 300 mm wybrane pod maksymalny zasieg:
- * AprilTag potrzebuje okolo 8 pikseli na bok, zeby zdekodowac 36h11, co
- * przy ogniskowej 297 px daje
- *     zasieg = 297 * 300 / 8 = 11,1 m
- * Przy 150 mm byloby to 5,6 m.
- */
-#define FLORA_CAM_TAG_SIZE_MM   300
-/**
- * Zasieg wyliczony z geometrii, do potwierdzenia pomiarem w polu -
- * swiatlo, ostrosc obiektywu i kontrast wydruku moga go skrocic.
- */
-#define FLORA_CAM_MAX_RANGE_MM  11000
+/* ---- Wykrywanie przeszkod ---- */
 
 /**
- * Decymacja przed szukaniem krawedzi. JEDEN znaczy pelna rozdzielczosc,
- * czyli maksymalny zasieg kosztem tempa - detektor pracuje na
- * czterokrotnie wiekszym obrazie niz przy decymacji 2.
+ * Wysokosc obiektywu nad ziemia w milimetrach. ZERO znaczy "nie zmierzono".
  *
- * Spodziewane tempo to 0,3-0,5 klatki na sekunde. Przy robocie jadacym
- * ponizej 0,2 m/s znaczy to poprawke pozycji co 2-3 sekundy i kilkadziesiat
- * centymetrow przejechanych miedzy nimi - filtr Kalmana pokrywa te luke
- * odometria. Biblioteka przyjmuje tez wartosci niecalkowite, wiec 1,5 jest
- * sensownym kompromisem, gdyby tempo okazalo sie za niskie.
+ * Bez tej liczby detektor przeszkod dziala, ale nie umie zamienic
+ * pierscienia obrazu na odleglosc i kazdy sektor idzie na kabel jako zero,
+ * czyli "nie wiem" - co dla straznika w bryle znaczy "nie jedz". Czyli:
+ * bez pomiaru wykrywanie dziala w logu, a nie dziala w praktyce.
+ *
+ * Geometria nadiru to `odleglosc = h * tan(promien_px / f)`, czyli skaluje
+ * sie WPROST PROPORCJONALNIE do h. Blad wysokosci przeklada sie jeden do
+ * jednego na blad odleglosci - zmierz miarka, nie szacuj.
+ *
+ * Tagcam nie ma sieci, wiec zmiana wymaga przeflashowania (dawniej na
+ * glowicy szlo przez http://<ip>/height i NVS).
  */
-#define FLORA_CAM_QUAD_DECIMATE 1.0f
+#define FLORA_CAM_HEIGHT_MM 0
 
 /**
- * ASYMETRIA DOKLADNOSCI, wazna dla filtra na dole.
- *
- * Azymut liczymy z polozenia srodka znacznika, wiec jego rozdzielczosc to
- * 0,19 stopnia na CALYM zasiegu. Odleglosc liczymy z pozornego rozmiaru,
- * a ten maleje z kwadratem - blad jednego piksela w pomiarze boku daje:
- *
- *    1 m  ->   11 mm bledu
- *    3 m  ->   98 mm
- *    6 m  ->  379 mm
- *    9 m  ->  826 mm
- *   11 m  -> 1209 mm
- *
- * Czyli na granicy zasiegu odleglosc ma ponad metr niepewnosci, a azymut
- * jest nadal dokladny. Filtr powinien ufac KIERUNKOWI znacznie bardziej
- * niz ODLEGLOSCI - dlatego pole `quality` w flora_tag_t maleje razem
- * z pozornym rozmiarem.
+ * Zegar wejsciowy czujnika. OV5640 przy 20 MHz robi sie goracy w kilka
+ * minut, a do przeszkod wystarcza ~4 kl/s. Gdy czujnik nie ruszy przy tej
+ * wartosci, main.c probuje 20 MHz.
  */
-
-/**
- * Ogniskowa w pikselach, wyliczona z katalogowego kata widzenia obiektywu.
- *
- * Obiektyw ma 68 stopni PO PRZEKATNEJ. Przy obrazie 320x240 daje to
- *   FOV poziomy = 2 * atan( tan(34 st) / (przekatna/szerokosc) ) = 56,7 st
- *   ogniskowa   = 160 / tan(28,35 st) = 297 px
- *
- * To WARTOSC WYJSCIOWA, nie koncowa. Katalogowy kat jest podawany
- * z tolerancja, a montaz czujnika wzgledem obiektywu tez wnosi blad.
- * Uscislij pomiarem: postaw znacznik na zmierzonej odleglosci, odczytaj
- * z logu pozorny bok w pikselach i policz
- *     ogniskowa = bok_px * odleglosc_mm / bok_znacznika_mm
- * Przy tym obiektywie dystorsja jest niewielka (to nie szerokokatny),
- * wiec jeden pomiar wystarczy.
- */
-#define FLORA_CAM_FOCAL_PX      297.0f
+#define FLORA_CAM_XCLK_HZ 10000000
