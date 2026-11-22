@@ -1,0 +1,9 @@
+time,source,boot,lvl,msg,t_ms,tag
+2026-11-22T01:41:50.907+00:00,tele,False,W,reset bus failed: no devices found,452363,1-wire.device
+2026-11-22T01:41:50.907+00:00,tele,False,E,"flora_temp_init(100): brak DS18B20 na GPIO41 (znaleziono 0 innych urzadzen) - sprawdz rezystor 4,7k do 3,3V, zasilanie i przewod danych",452363,flora_temp
+2026-11-22T01:47:33.744+00:00,head,False,W,[dol] przepelnienie bufora odbiorczego,795269,flora_link
+2026-11-22T01:49:27.207+00:00,head,False,W,[dol] przepelnienie bufora odbiorczego,908769,flora_link
+2026-11-22T01:49:51.162+00:00,tele,False,W,reset bus failed: no devices found,932463,1-wire.device
+2026-11-22T01:49:51.162+00:00,tele,False,E,"flora_temp_init(100): brak DS18B20 na GPIO41 (znaleziono 0 innych urzadzen) - sprawdz rezystor 4,7k do 3,3V, zasilanie i przewod danych",932463,flora_temp
+2026-11-22T01:59:51.136+00:00,tele,False,W,reset bus failed: no devices found,1532463,1-wire.device
+2026-11-22T01:59:51.136+00:00,tele,False,E,"flora_temp_init(100): brak DS18B20 na GPIO41 (znaleziono 0 innych urzadzen) - sprawdz rezystor 4,7k do 3,3V, zasilanie i przewod danych",1532463,flora_temp

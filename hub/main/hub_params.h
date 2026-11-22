@@ -12,6 +12,8 @@
  *   wheel_mm      srednia skuteczna srednica kol, 80-200; z cmd/wheel_cal
  *   wheel_ratio   srednica prawego / lewego, 0,9-1,1; z cmd/wheel_cal
  *   cam_x_mm, cam_y_mm   kamera znacznikow wzgledem srodka osi kol
+ *   cam_yaw_deg   obrot osi kamery, dodatni w prawo, -45..45 (flora_board.h)
+ *   cam_h_mm, tag_h_mm   wysokosc kamery i znacznikow, 0-2000 (odleglosc pozioma)
  *   site_lat, site_lon   miejsce pracy (kompas sloneczny)
  *   mag_decl      deklinacja magnetyczna, wschodnia dodatnia
  *
@@ -28,6 +30,8 @@ typedef struct {
     float  wheel_mm;
     float  wheel_ratio;
     float  cam_x_mm, cam_y_mm;
+    float  cam_yaw_deg;      /**< dodawany do kata kazdego znacznika */
+    float  cam_h_mm, tag_h_mm; /**< wysokosci nad ziemia, do odleglosci poziomej */
     double lat_deg, lon_deg;
     float  decl_deg;
 

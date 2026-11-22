@@ -136,6 +136,17 @@
  */
 #define FLORA_NAV_CAM_X_MM 295.0f
 #define FLORA_NAV_CAM_Y_MM 0.0f
+/** Obrot osi kamery wzgledem przodu robota [st], dodatni W PRAWO (jak kat
+ *  znacznika). Znacznik na osi robota widziany pod katem -a daje cam_yaw = +a.
+ *  Kalibracja: znacznik na tasmie od srodka przodu, kat z logu ze zmienionym
+ *  znakiem do cmd/config/cam_yaw_deg. */
+#define FLORA_NAV_CAM_YAW_DEG 0.0f
+/** Wysokosc obiektywu kamery znacznikow i srodka znacznikow nad ziemia [mm].
+ *  Kamera podaje odleglosc w linii prostej, EKF liczy na plaszczyznie - przy
+ *  roznicy wysokosci dh bryla bierze sqrt(d^2 - dh^2). Oba 0 = bez poprawki.
+ *  22.11.2026: kamera 830, znacznik testowy 400 (1,5 m: blad ok. 6 cm). */
+#define FLORA_NAV_CAM_H_MM 0.0f
+#define FLORA_NAV_TAG_H_MM 0.0f
 /** Startowa wariancja drogi kola na mm drogi [mm^2/mm]; z UMBmark i jazd po trawie. */
 #define FLORA_NAV_K_WHEEL 0.5f
 
@@ -197,6 +208,9 @@
 #define FLORA_NVS_WHEEL_RATIO "wheel_ratio"  /**< srednica prawego / lewego */
 #define FLORA_NVS_CAM_X_MM    "cam_x_mm"
 #define FLORA_NVS_CAM_Y_MM    "cam_y_mm"
+#define FLORA_NVS_CAM_YAW     "cam_yaw_deg"
+#define FLORA_NVS_CAM_H       "cam_h_mm"
+#define FLORA_NVS_TAG_H       "tag_h_mm"
 #define FLORA_NVS_SITE_LAT    "site_lat"
 #define FLORA_NVS_SITE_LON    "site_lon"
 #define FLORA_NVS_MAG_DECL    "mag_decl"

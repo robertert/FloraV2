@@ -1,0 +1,2 @@
+time,source,axis_ratio,cal_status,off_x_ut,off_y_ut,off_z_ut,ref_dip_deg,ref_h_ut,rms_pct,samples,sectors
+2026-11-22T17:13:41.542+00:00,head,1.069,0,-15.55,14.9,-40.34,-66.57,19.87,3.77,400,12

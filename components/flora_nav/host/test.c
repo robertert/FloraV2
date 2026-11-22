@@ -376,6 +376,83 @@ int main(int argc, char **argv)
               "po odtworzeniu kurs przyjety od razu, theta zostaje");
     }
 
+    /* ---- skok kursu glowicy bez obrotu (22.11.2026, nagranie z planszy) ----
+     * Robot stoi, glowica nagle przestawia kurs o 154 st wg magnetometru,
+     * zyroskop glowicy nic nie widzi. Ma sie przesunac b, nie theta ani poza. */
+    {
+        static flora_navcore_t nc;
+        flora_navcore_tuning_t tun = FLORA_NAVCORE_DEFAULT_TUNING();
+        flora_navcore_geom_t geom = { .track_mm = 390.0f, .lat_deg = 50.06, .lon_deg = 19.94, .decl_deg = 6.0f };
+        flora_navcore_init(&nc, &tun, &geom);
+        flora_navcore_att_t att = { .heading_valid = true, .mag_valid = false,
+                                    .heading_deg = 286.5f, .rate_dps = 0.0f,
+                                    .sigma_deg = 4.0f, .age_us = -1 };
+        int64_t t = 1000000;
+        for (int i = 0; i < 250; i++) {          /* 5 s: b ustawione z kursu glowicy */
+            flora_navcore_in_t in = { .t_us = t, .dt_s = 0.02f, .att = &att };
+            flora_navcore_step(&nc, &in);
+            t += 20000;
+        }
+        att.heading_deg = 132.2f;                 /* skok o -154,3 st */
+        for (int i = 0; i < 500; i++) {          /* 10 s po skoku */
+            flora_navcore_in_t in = { .t_us = t, .dt_s = 0.02f, .att = &att };
+            flora_navcore_step(&nc, &in);
+            t += 20000;
+        }
+        const flora_ekf_t *f = &nc.v[0].ekf;
+        float b = R2D(f->x[3]); if (b < 0.0f) b += 360.0f;
+        printf("  skok kursu glowicy 154 st na postoju: skokow %u (%.1f st), theta %.2f st, "
+               "poza (%.1f, %.1f), b %.1f st\n", nc.n_head_jumps, nc.last_head_jump_deg,
+               R2D(f->x[2]), f->x[0], f->x[1], b);
+        check(nc.n_head_jumps == 1 && fabsf(R2D(f->x[2])) < 1.0f &&
+              fabsf(f->x[0]) < 1.0f && fabsf(f->x[1]) < 1.0f && fabsf(b - 132.2f) < 2.0f,
+              "skok kursu glowicy: przesuwa b, theta i poza zostaja");
+        check(p_is_sane(f), "skok kursu glowicy: P poprawna");
+
+        /* Prawdziwy obrot (zyroskop go widzi) to NIE skok: 90 st w lewo w 2 s. */
+        uint32_t jumps0 = nc.n_head_jumps;
+        float arc = 0.5f * 390.0f * D2R(45.0f) * 0.02f;
+        att.rate_dps = -45.0f;                   /* kurs kompasowy maleje przy obrocie w lewo */
+        for (int i = 0; i < 100; i++) {
+            att.heading_deg -= 45.0f * 0.02f;
+            if (att.heading_deg < 0.0f) att.heading_deg += 360.0f;
+            flora_navcore_in_t in = { .t_us = t, .dl_mm = -arc, .dr_mm = arc, .dt_s = 0.02f, .att = &att };
+            flora_navcore_step(&nc, &in);
+            t += 20000;
+        }
+        att.rate_dps = 0.0f;
+        for (int i = 0; i < 100; i++) {
+            flora_navcore_in_t in = { .t_us = t, .dt_s = 0.02f, .att = &att };
+            flora_navcore_step(&nc, &in);
+            t += 20000;
+        }
+        printf("  obrot 90 st w lewo po skoku: nowych skokow %u, theta %.1f st\n",
+               nc.n_head_jumps - jumps0, R2D(f->x[2]));
+        check(nc.n_head_jumps == jumps0 && fabsf(R2D(f->x[2]) - 90.0f) < 3.0f,
+              "prawdziwy obrot nie jest skokiem, theta 90 st");
+    }
+
+    /* ---- blokada kursu przy dzialajacym zyroskopie: przesuwa b, nie theta ---- */
+    {
+        flora_ekf_t r;
+        flora_ekf_init(&r, &cfg);
+        rng_t m = { 7 };
+        for (int i = 0; i < 20; i++) flora_ekf_update_heading(&r, B_TRUE + rnd_n(&m, HEAD_SIGMA), D2R(5.0f));
+        /* Odniesienie kursu przesuwa sie o 60 st, robot stoi, zyro to potwierdza. */
+        for (int i = 0; i < 400; i++) {
+            flora_ekf_predict_odom(&r, 0.0f, 0.0f, DT);
+            flora_ekf_observe_gyro(&r, 0.0f);
+            if (i % 25 == 0) {
+                flora_ekf_update_heading(&r, B_TRUE + D2R(60.0f) + rnd_n(&m, HEAD_SIGMA), D2R(5.0f));
+            }
+        }
+        printf("  odniesienie kursu +60 st przy zyroskopie: wyjscia z blokady %u (przez b %u), "
+               "theta %.1f st\n", r.n_recovered, r.n_recovered_b, R2D(r.x[2]));
+        check(r.n_recovered_b >= 1 && fabsf(R2D(r.x[2])) < 2.0f,
+              "przy zyroskopie blokada kursu przesuwa b, theta zostaje");
+        check(p_is_sane(&r), "blokada przez b: P poprawna");
+    }
+
     /* ---- slonce (Krakow) ---- */
     const double lat = 50.06, lon = 19.94;
     double el, az, minute;

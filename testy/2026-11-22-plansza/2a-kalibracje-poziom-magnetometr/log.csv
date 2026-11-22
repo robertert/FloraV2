@@ -1,0 +1,211 @@
+time,source,boot,lvl,msg,t_ms,tag
+2026-11-22T17:02:16.396+00:00,head,True,I,"firmware head-v0.3.1-dirty (Nov 22 2026 01:12:02), start nr 97, powod restartu: power_on",1048,diag
+2026-11-22T17:02:16.397+00:00,head,True,I,linie I2C w spoczynku: SDA(21)=1 SCL(47)=1 (oczekiwane 1/1),1048,glowica
+2026-11-22T17:02:16.574+00:00,head,True,I,"  [z NVS] siec ""<wifi>"", broker mqtts://vps-91a4a09b.vps.ovh.ca:8883 jako robot1",1058,siec
+2026-11-22T17:02:16.574+00:00,head,True,I,pp rom version: e7ae62f,1058,pp
+2026-11-22T17:02:16.574+00:00,head,True,I,net80211 rom version: e7ae62f,1068,net80211
+2026-11-22T17:02:16.575+00:00,head,True,I,=== TEST LACZA NA PETLI ZWROTNEJ ===,1068,link
+2026-11-22T17:02:16.575+00:00,head,True,I,queue free spaces: 20,1068,uart
+2026-11-22T17:02:16.575+00:00,head,True,I,"[petla] UART1 gotowy: TX=42 RX=41, 57600 baud, wersja protokolu 5",1078,flora_link
+2026-11-22T17:02:16.576+00:00,head,True,I,"  petla zwrotna zwarta, nadawanie wraca do odbioru",1088,link
+2026-11-22T17:02:16.576+00:00,head,True,I,Returned from app_main(),1088,main_task
+2026-11-22T17:02:16.576+00:00,head,True,I,[petla] polaczenie nawiazane,1098,flora_link
+2026-11-22T17:02:16.888+00:00,head,True,I,  zdarzenie: polaczenie w gore,1098,link
+2026-11-22T17:02:16.889+00:00,head,True,I,Init data frame dynamic rx buffer num: 32,0,
+2026-11-22T17:02:16.889+00:00,head,True,I,Init static rx mgmt buffer num: 5,0,
+2026-11-22T17:02:16.889+00:00,head,True,I,Init management short buffer num: 32,0,
+2026-11-22T17:02:16.889+00:00,head,True,I,Init dynamic tx buffer num: 32,0,
+2026-11-22T17:02:17.091+00:00,head,True,I,Init static tx FG buffer num: 2,0,
+2026-11-22T17:02:17.091+00:00,head,True,I,Init static rx buffer size: 1600,0,
+2026-11-22T17:02:17.091+00:00,head,True,I,Init static rx buffer num: 10,0,
+2026-11-22T17:02:17.091+00:00,head,True,I,Init dynamic rx buffer num: 32,0,
+2026-11-22T17:02:17.091+00:00,head,True,I,rx ba win: 6,1158,wifi_init
+2026-11-22T17:02:17.091+00:00,head,True,I,accept mbox: 6,1158,wifi_init
+2026-11-22T17:02:17.091+00:00,head,True,I,tcpip mbox: 32,1158,wifi_init
+2026-11-22T17:02:17.091+00:00,head,True,I,udp mbox: 6,1158,wifi_init
+2026-11-22T17:02:17.091+00:00,head,True,I,tcp mbox: 6,1168,wifi_init
+2026-11-22T17:02:17.091+00:00,head,True,I,tcp tx win: 5760,1168,wifi_init
+2026-11-22T17:02:17.361+00:00,head,True,I,tcp rx win: 5760,1168,wifi_init
+2026-11-22T17:02:17.361+00:00,head,True,I,tcp mss: 1440,1178,wifi_init
+2026-11-22T17:02:17.361+00:00,head,True,I,WiFi IRAM OP enabled,1178,wifi_init
+2026-11-22T17:02:17.361+00:00,head,True,I,WiFi RX IRAM OP enabled,1178,wifi_init
+2026-11-22T17:02:17.361+00:00,head,True,I,"phy_version 712,87e8c20e,Apr 13 2026,18:51:10",1188,phy_init
+2026-11-22T17:02:17.361+00:00,head,True,I,"laczenie z ""<wifi>"", odstep 1000-60000 ms",1238,flora_wifi
+2026-11-22T17:02:17.361+00:00,head,True,I,  WiFi: proba 0,1238,siec
+2026-11-22T17:02:17.362+00:00,head,True,I,  czekam na adres (do 20 s)...,1238,siec
+2026-11-22T17:02:17.362+00:00,head,True,I,  [ OK ] odebrano 20 z 20 ramek telemetrii,1398,link
+2026-11-22T17:02:17.362+00:00,head,True,I,  [ OK ] payload ostatniej ramki zgadza sie co do bitu,1398,link
+2026-11-22T17:02:17.565+00:00,head,True,I,  [ OK ] polaczenie zglaszane jako nawiazane,1398,link
+2026-11-22T17:02:17.565+00:00,head,True,I,  [ OK ] komenda potwierdzona w 7 ms,1408,link
+2026-11-22T17:02:17.565+00:00,head,True,I,  [ OK ] komenda trafila do handlera dokladnie raz,1408,link
+2026-11-22T17:02:17.565+00:00,head,True,I,"  ramki: 22 odebrane, 22 wyslane",1408,link
+2026-11-22T17:02:17.566+00:00,head,True,I,"  potwierdzenia: 1 wyslane, 1 odebrane",1418,link
+2026-11-22T17:02:17.566+00:00,head,True,I,"  bledy: CRC 0, wersja 0, typ 0, dlugosc 0, flagi 0, przepelnienia 0",1418,link
+2026-11-22T17:02:17.566+00:00,head,True,I,"  ponowienia 0, duplikaty 0, bajty 503",1428,link
+2026-11-22T17:02:17.566+00:00,head,True,I,  [ OK ] zero bledow ramkowania na czystej petli,1428,link
+2026-11-22T17:02:17.566+00:00,head,True,I,  [ OK ] zero przepelnien bufora,1438,link
+2026-11-22T17:02:17.722+00:00,head,True,I,  [ OK ] potwierdzenie przyszlo bez ponawiania,1438,link
+2026-11-22T17:02:17.723+00:00,head,True,I,  ----------------------------------------,1448,link
+2026-11-22T17:02:17.723+00:00,head,True,I,  WYNIK: wszystko przeszlo (8 sprawdzen),1448,link
+2026-11-22T17:02:17.951+00:00,head,True,I,  ----------------------------------------,1458,link
+2026-11-22T17:02:17.951+00:00,head,True,I,queue free spaces: 20,1458,uart
+2026-11-22T17:02:18.101+00:00,head,True,W,"GPIO 42 is not usable, maybe used by others",1468,uart
+2026-11-22T17:02:18.101+00:00,head,True,I,"[dol] UART1 gotowy: TX=42 RX=41, 115200 baud, wersja protokolu 5",1468,flora_link
+2026-11-22T17:02:18.101+00:00,head,True,I,queue free spaces: 20,1478,uart
+2026-11-22T17:02:18.101+00:00,head,True,I,"[gora] UART2 gotowy: TX=38 RX=39, 115200 baud, wersja protokolu 5",1478,flora_link
+2026-11-22T17:02:18.102+00:00,head,True,I,przekazywanie 0x15: gora -> dol,1488,flora_link
+2026-11-22T17:02:18.427+00:00,head,True,I,przekazywanie 0x31: gora -> dol,1488,flora_link
+2026-11-22T17:02:18.427+00:00,head,True,I,glowica posrodku lancucha: modul przeszkod -> glowica -> bryla,1498,lacza
+2026-11-22T17:02:18.428+00:00,head,True,I,"skan magistrali glownej (SDA=21, SCL=47):",1508,rozruch
+2026-11-22T17:02:18.428+00:00,head,True,I,  0x69  <- ICM-20948 (AD0 w stanie wysokim),1528,rozruch
+2026-11-22T17:02:18.428+00:00,head,True,I,  0x70  <- TCA9548A,1528,rozruch
+2026-11-22T17:02:18.630+00:00,head,True,I,  0x76  <- BME280,1528,rozruch
+2026-11-22T17:02:18.630+00:00,head,True,I,=== KOMPAS SLONECZNY ===,1528,rozruch
+2026-11-22T17:02:18.630+00:00,head,True,I,TCA9548A @0x70 gotowy,1528,flora_i2cmux
+2026-11-22T17:02:18.631+00:00,head,True,I,skanowanie kanalow multipleksera:,1538,flora_i2cmux
+2026-11-22T17:02:18.631+00:00,head,True,I,  kanal 0: 0x69,1558,flora_i2cmux
+2026-11-22T17:02:18.631+00:00,head,True,I,  kanal 0: 0x70,1558,flora_i2cmux
+2026-11-22T17:02:18.631+00:00,head,True,I,  kanal 0: 0x76,1558,flora_i2cmux
+2026-11-22T17:02:18.631+00:00,head,True,I,  kanal 1: 0x10,1558,flora_i2cmux
+2026-11-22T17:02:18.631+00:00,head,True,I,  kanal 1: 0x69,1578,flora_i2cmux
+2026-11-22T17:02:18.631+00:00,head,True,I,  kanal 1: 0x70,1578,flora_i2cmux
+2026-11-22T17:02:18.836+00:00,head,True,I,  kanal 1: 0x76,1578,flora_i2cmux
+2026-11-22T17:02:18.836+00:00,head,True,I,  kanal 2: 0x69,1588,flora_i2cmux
+2026-11-22T17:02:18.836+00:00,head,True,I,  kanal 2: 0x70,1598,flora_i2cmux
+2026-11-22T17:02:18.836+00:00,head,True,I,  kanal 2: 0x76,1598,flora_i2cmux
+2026-11-22T17:02:18.836+00:00,head,True,I,  kanal 3: 0x69,1608,flora_i2cmux
+2026-11-22T17:02:18.836+00:00,head,True,I,  kanal 3: 0x70,1618,flora_i2cmux
+2026-11-22T17:02:18.837+00:00,head,True,I,  kanal 3: 0x76,1618,flora_i2cmux
+2026-11-22T17:02:18.837+00:00,head,True,I,  kanal 4: 0x69,1628,flora_i2cmux
+2026-11-22T17:02:19.080+00:00,head,True,I,  kanal 4: 0x70,1628,flora_i2cmux
+2026-11-22T17:02:19.080+00:00,head,True,I,  kanal 4: 0x76,1638,flora_i2cmux
+2026-11-22T17:02:19.080+00:00,head,True,I,  kanal 5: 0x69,1648,flora_i2cmux
+2026-11-22T17:02:19.080+00:00,head,True,I,  kanal 5: 0x70,1648,flora_i2cmux
+2026-11-22T17:02:19.080+00:00,head,True,I,  kanal 5: 0x76,1648,flora_i2cmux
+2026-11-22T17:02:19.081+00:00,head,True,I,  kanal 6: 0x10,1658,flora_i2cmux
+2026-11-22T17:02:19.081+00:00,head,True,I,  kanal 6: 0x69,1668,flora_i2cmux
+2026-11-22T17:02:19.081+00:00,head,True,I,  kanal 6: 0x70,1668,flora_i2cmux
+2026-11-22T17:02:19.223+00:00,head,True,I,  kanal 6: 0x76,1668,flora_i2cmux
+2026-11-22T17:02:19.223+00:00,head,True,I,  kanal 7: 0x10,1668,flora_i2cmux
+2026-11-22T17:02:19.224+00:00,head,True,I,  kanal 7: 0x69,1688,flora_i2cmux
+2026-11-22T17:02:19.224+00:00,head,True,I,  kanal 7: 0x70,1688,flora_i2cmux
+2026-11-22T17:02:19.224+00:00,head,True,I,  kanal 7: 0x76,1688,flora_i2cmux
+2026-11-22T17:02:19.503+00:00,head,True,E,flora_veml7700_init(102): zapis konfiguracji,1688,flora_veml
+2026-11-22T17:02:19.503+00:00,head,True,E,  kanal 0 (N): brak czujnika,1688,rozruch
+2026-11-22T17:02:19.667+00:00,head,True,I,"VEML7700 @0x10: wzmocnienie 0.125x, calkowanie 25 ms, 1.8432 lx na zliczenie, korekta nieliniowosci wlaczona",1728,flora_veml
+2026-11-22T17:02:19.667+00:00,head,True,I,"VEML7700 @0x10: wzmocnienie 0.125x, calkowanie 25 ms, 1.8432 lx na zliczenie, korekta nieliniowosci wlaczona",1758,flora_veml
+2026-11-22T17:02:19.667+00:00,head,True,I,"VEML7700 @0x10: wzmocnienie 0.125x, calkowanie 25 ms, 1.8432 lx na zliczenie, korekta nieliniowosci wlaczona",1788,flora_veml
+2026-11-22T17:02:19.667+00:00,head,True,I,  znaleziono 3 z 4 czujnikow,1788,rozruch
+2026-11-22T17:02:19.667+00:00,head,True,I,  odczyt poczatkowy:,1788,rozruch
+2026-11-22T17:02:19.667+00:00,head,True,I,[gora] polaczenie nawiazane,1788,flora_link
+2026-11-22T17:02:19.667+00:00,head,True,I,modul przeszkod: polaczony,1798,lacza
+2026-11-22T17:02:19.667+00:00,head,True,I,    E:    100.6 lx (surowo    54),1798,rozruch
+2026-11-22T17:02:19.667+00:00,head,True,I,[dol] polaczenie nawiazane,1808,flora_link
+2026-11-22T17:02:19.966+00:00,head,True,I,    S:    113.7 lx (surowo    61),1808,rozruch
+2026-11-22T17:02:19.966+00:00,head,True,I,bryla: polaczona,1808,lacza
+2026-11-22T17:02:19.967+00:00,head,True,I,"synchronizacja zegara, przesuniecie 79508 us",1818,head_cmd
+2026-11-22T17:02:19.967+00:00,head,True,I,    W:    136.3 lx (surowo    73),1828,rozruch
+2026-11-22T17:02:19.967+00:00,head,True,I,"  zaslon po jednym czujniku i sprawdz w podgladzie,",1828,rozruch
+2026-11-22T17:02:20.117+00:00,head,True,I,  czy kanal zgadza sie z kierunkiem w uchwycie,1828,rozruch
+2026-11-22T17:02:20.117+00:00,head,True,I,=== BME280 ===,1838,rozruch
+2026-11-22T17:02:20.118+00:00,head,True,I,BME280 @0x76 gotowy (chip_id 0x60),1848,flora_bme280
+2026-11-22T17:02:20.118+00:00,head,True,I,"  23.25 C, 976.6 hPa",1858,rozruch
+2026-11-22T17:02:20.118+00:00,head,True,I,  wilgotnosc 42.0%,1858,rozruch
+2026-11-22T17:02:20.119+00:00,head,True,I,  po przeliczeniu na poziom morza: 1001.6 hPa (dla 220 m),1858,rozruch
+2026-11-22T17:02:20.119+00:00,head,True,I,=== ICM-20948 ===,1858,rozruch
+2026-11-22T17:02:20.340+00:00,head,True,E,set_bank(83): wybor banku 0,1868,flora_icm
+2026-11-22T17:02:20.340+00:00,head,True,E,bank_read(99): bank,1868,flora_icm
+2026-11-22T17:02:20.341+00:00,head,True,E,flora_icm20948_init(160): WHO_AM_I,1868,flora_icm
+2026-11-22T17:02:20.341+00:00,head,True,W,"  brak pod 0x68, probuje 0x69",1878,rozruch
+2026-11-22T17:02:20.341+00:00,head,True,I,"ICM-20948 @0x69 gotowy: akcelerometr +-4g, zyroskop +-500dps, magnetometr w trybie przelotowym",1968,flora_icm
+2026-11-22T17:02:20.545+00:00,head,True,I,"  przyspieszenie: +0.019 +0.012 +0.972 g, wypadkowa 0.972 g",1968,rozruch
+2026-11-22T17:02:20.545+00:00,head,True,I,  temperatura ukladu: 29.9 C,1968,rozruch
+2026-11-22T17:02:20.545+00:00,head,True,I,  kalibracja zyroskopu - NIE RUSZAJ masztem przez ~2 s,1978,rozruch
+2026-11-22T17:02:20.546+00:00,head,True,I,"offset zyroskopu: X 0.487, Y 0.530, Z 0.255 dps",2818,flora_icm
+2026-11-22T17:02:20.546+00:00,head,True,I,"  pole magnetyczne: -31.8 +4.1 -86.2 uT, wypadkowa 92.0 uT",2868,rozruch
+2026-11-22T17:02:20.546+00:00,head,True,W,  znacznie powyzej pola ziemskiego (~50 uT) - w poblizu jest zelazo albo przewod pod obciazeniem,2868,rozruch
+2026-11-22T17:02:20.547+00:00,head,True,I,"kalibracja magnetometru z NVS: hard iron (-14.79, 17.07, -45.12) uT, pole poziome 16.7 uT, inklinacja -66.5 st",2878,fusion
+2026-11-22T17:02:20.547+00:00,head,True,I,"poziom z NVS: pochylenie 2.05 st, przechyl -5.09 st",2888,fusion
+2026-11-22T17:02:20.694+00:00,head,True,I,"zadanie 60 Hz, ATTITUDE co 3 tick = 20 Hz, Kalman kursu [psi, dryf]",2888,fusion
+2026-11-22T17:02:20.694+00:00,head,True,I,"zadanie 1 Hz: kompas 1 Hz, pogoda 0,1 Hz, stan 0,2 Hz",2898,slow
+2026-11-22T17:02:20.695+00:00,head,True,I,"--- podglad kamery, tryb raw (RGB565) ---",2898,podglad
+2026-11-22T17:02:20.695+00:00,head,True,I,"  siec ""<wifi>""",2908,podglad
+2026-11-22T17:02:20.884+00:00,head,True,I,  czekam na adres (do 20 s)...,2908,podglad
+2026-11-22T17:02:20.886+00:00,head,True,I,INIT -> BIAS_LOAD,3088,fusion
+2026-11-22T17:02:21.170+00:00,head,True,I,offset z NVS: 0.470 0.596 -0.148 dps,3108,fusion
+2026-11-22T17:02:21.171+00:00,head,True,I,BIAS_LOAD -> ALIGN,3108,fusion
+2026-11-22T17:02:21.172+00:00,head,True,I,"sta ip: <ip>, mask: <ip>, gw: <ip>",4778,esp_netif_handlers
+2026-11-22T17:02:21.172+00:00,head,True,I,"polaczono, adres <ip>",4778,flora_wifi
+2026-11-22T17:02:21.172+00:00,head,True,I,  WiFi: adres <ip>,4778,siec
+2026-11-22T17:02:21.353+00:00,head,True,I,"klient uruchomiony: mqtts://vps-91a4a09b.vps.ovh.ca:8883 (TLS), z logowaniem, prefiks tematow ""flora/robot1""",4778,flora_mqtt
+2026-11-22T17:02:21.354+00:00,head,True,I,DMA Channel=0,4778,s3 ll_cam
+2026-11-22T17:02:21.354+00:00,head,True,I,  czekam na brokera mqtts://vps-91a4a09b.vps.ovh.ca:8883 (do 30 s)...,4788,siec
+2026-11-22T17:02:21.354+00:00,head,True,I,cam init ok,4798,cam_hal
+2026-11-22T17:02:21.355+00:00,head,True,I,pin_sda 4 pin_scl 5,4808,sccb-ng
+2026-11-22T17:02:21.355+00:00,head,True,I,sccb_i2c_port=1,4818,sccb-ng
+2026-11-22T17:02:21.356+00:00,head,True,I,Mismatch PID=0x5640,4828,ov3640
+2026-11-22T17:02:21.356+00:00,head,True,I,Mismatch PID=0x5640,4828,ov3660
+2026-11-22T17:02:21.357+00:00,head,True,I,Camera PID=0x5640 VER=0x00 MIDL=0x00 MIDH=0x00,4828,camera
+2026-11-22T17:02:21.623+00:00,head,True,I,Detected OV5640 camera,4828,camera
+2026-11-22T17:02:21.624+00:00,head,True,I,Detected camera at address=0x3c,4838,camera
+2026-11-22T17:02:21.624+00:00,head,True,W,brak magnetometru - kurs bedzie wzgledny do konca sesji (magnetometr go nie przestawi; zakotwiczy dopiero mag_cal),5128,fusion
+2026-11-22T17:02:21.625+00:00,head,True,I,ALIGN -> RUN,5128,fusion
+2026-11-22T17:02:21.625+00:00,head,True,I,PSRAM DMA mode disabled,5528,cam_hal
+2026-11-22T17:02:21.626+00:00,head,True,I,"node_size: 3840, nodes_per_line: 1, lines_per_node: 6",5528,s3 ll_cam
+2026-11-22T17:02:21.626+00:00,head,True,I,"dma_half_buffer_min:  3840, dma_half_buffer: 15360, lines_per_half_buffer: 24, dma_buffer_size: 30720",5528,s3 ll_cam
+2026-11-22T17:02:21.784+00:00,head,True,I,"buffer_size: 30720, half_buffer_size: 15360, node_buffer_size: 3840, node_cnt: 8, total_cnt: 10",5538,cam_hal
+2026-11-22T17:02:21.785+00:00,head,True,I,Allocating 153600 Byte frame buffer in PSRAM,5548,cam_hal
+2026-11-22T17:02:21.785+00:00,head,True,I,Allocating 153600 Byte frame buffer in PSRAM,5548,cam_hal
+2026-11-22T17:02:21.786+00:00,head,True,I,cam config ok,5558,cam_hal
+2026-11-22T17:02:21.786+00:00,head,True,I,"Set PLL: bypass: 0, multiplier: 8, sys_div: 1, pre_div: 1, root_2x: 0, pclk_root_div: 1, pclk_manual: 1, pclk_div: 4",5568,ov5640
+2026-11-22T17:02:21.786+00:00,head,True,I,"Calculated XVCLK: 10000000 Hz, REFIN: 10000000 Hz, VCO: 80000000 Hz, PLL_CLK: 32000000 Hz, SYSCLK: 8000000 Hz, PCLK: 4000000 Hz",5568,ov5640
+2026-11-22T17:02:21.787+00:00,head,True,I,czujnik PID 0x5640,5618,flora_camera
+2026-11-22T17:02:21.787+00:00,head,True,I,"autofokus: sterownik go umie - czy jest silniczek, pokaze dopiero proba",5618,flora_camera
+2026-11-22T17:02:22.110+00:00,head,True,I,"ZUPT: pierwszy pomiar dryfu na postoju, -0.368 st/s",6108,fusion
+2026-11-22T17:02:22.110+00:00,head,True,I,kurs 360.0 st (RUN) | czujniki 0x7E | bledy 0,7898,slow
+2026-11-22T17:02:22.110+00:00,head,True,I,balans bieli zablokowany po rozgrzewce,8428,flora_camera
+2026-11-22T17:02:22.111+00:00,head,True,I,"kamera gotowa: 320x240 RGB565, 2 bufor(y)",8438,flora_camera
+2026-11-22T17:02:22.111+00:00,head,True,I,  obraz na komputerze: http://<ip>/,8438,podglad
+2026-11-22T17:02:22.113+00:00,head,True,I,"  zegar czujnika 10 MHz, podglad do 3 kl/s, usypianie po 10 s",8438,podglad
+2026-11-22T17:02:22.212+00:00,head,True,I,  surowa klatka: curl -o kadr.rgb565 http://<ip>/raw,8448,podglad
+2026-11-22T17:02:22.213+00:00,head,True,I,  powrot do podgladu: http://<ip>/mode?v=jpeg,8448,podglad
+2026-11-22T17:02:22.213+00:00,head,True,I,"detektor gotowy: rodzina 0, zmniejszenie 1.0, poprawa 0 bitow, znacznik 152 mm",8458,flora_tags
+2026-11-22T17:02:22.213+00:00,head,True,I,"detektor gotowy: znacznik 152 mm, ogniskowa 297 px, decymacja 1.0",8468,znaczniki
+2026-11-22T17:02:22.451+00:00,head,True,I,petla sterowania dziala,8478,glowica
+2026-11-22T17:02:22.451+00:00,head,True,I,Certificate validated,9358,esp-x509-crt-bundle
+2026-11-22T17:02:22.729+00:00,head,True,I,polaczono z brokerem,11498,flora_mqtt
+2026-11-22T17:02:22.729+00:00,head,True,W,[dol] przepelnienie bufora odbiorczego,11508,flora_link
+2026-11-22T17:02:22.729+00:00,head,True,I,  MQTT: polaczony,11518,siec
+2026-11-22T17:02:22.730+00:00,head,True,I,"subskrypcja ""flora/robot1/headcmd/#"" (qos 1)",11538,flora_mqtt
+2026-11-22T17:02:22.730+00:00,head,True,I,"subskrypcja ""flora/robot1/cmd/#"" (qos 1)",11548,flora_mqtt
+2026-11-22T17:02:22.730+00:00,head,True,W,bryla nadaje przez tunel - przekazuje jej cmd/#,11548,tunel
+2026-11-22T17:02:23.036+00:00,head,True,I,"znacznik 0: 1444 mm, +3.5 st, jakosc 80 (srodek 178,139, ostrosc 118)",12608,znaczniki
+2026-11-22T17:02:23.036+00:00,head,True,I,kurs 360.0 st (RUN) | czujniki 0x7E | bledy 0,12918,slow
+2026-11-22T17:02:23.036+00:00,head,True,I,"znacznik 0: 1445 mm, +3.5 st, jakosc 80 (srodek 178,139, ostrosc 116)",14958,znaczniki
+2026-11-22T17:02:23.037+00:00,head,True,I,"znacznik 0: 1444 mm, +3.4 st, jakosc 80 (srodek 178,139, ostrosc 114)",16968,znaczniki
+2026-11-22T17:02:23.037+00:00,head,True,I,kurs 360.0 st (RUN) | czujniki 0x7E | bledy 0,17898,slow
+2026-11-22T17:02:24.671+00:00,head,True,I,"znacznik 0: 1444 mm, +3.4 st, jakosc 80 (srodek 178,139, ostrosc 112)",19728,znaczniki
+2026-11-22T17:02:26.719+00:00,head,True,I,"znacznik 0: 1443 mm, +3.4 st, jakosc 80 (srodek 178,139, ostrosc 108)",21828,znaczniki
+2026-11-22T17:02:27.786+00:00,head,True,I,kurs 360.0 st (RUN) | czujniki 0x7E | bledy 0,22908,slow
+2026-11-22T17:02:28.460+00:00,head,True,I,"znacznik 0: 1445 mm, +3.4 st, jakosc 80 (srodek 178,139, ostrosc 109)",23498,znaczniki
+2026-11-22T17:02:30.099+00:00,head,True,I,"znacznik 0: 1444 mm, +3.4 st, jakosc 80 (srodek 178,139, ostrosc 117)",25028,znaczniki
+2026-11-22T17:02:31.736+00:00,head,True,I,"znacznik 0: 1443 mm, +3.4 st, jakosc 80 (srodek 178,139, ostrosc 115)",26858,znaczniki
+2026-11-22T17:02:32.788+00:00,head,True,I,kurs 0.0 st (RUN) | czujniki 0x7E | bledy 0,27898,slow
+2026-11-22T17:02:33.784+00:00,head,True,I,"znacznik 0: 1443 mm, +3.4 st, jakosc 80 (srodek 178,139, ostrosc 111)",28818,znaczniki
+2026-11-22T17:02:35.627+00:00,head,True,I,"znacznik 0: 1444 mm, +3.4 st, jakosc 80 (srodek 178,139, ostrosc 115)",30528,znaczniki
+2026-11-22T17:02:37.265+00:00,tele,False,W,reset bus failed: no devices found,32163,1-wire.device
+2026-11-22T17:02:37.265+00:00,tele,False,E,"flora_temp_init(100): brak DS18B20 na GPIO41 (znaleziono 0 innych urzadzen) - sprawdz rezystor 4,7k do 3,3V, zasilanie i przewod danych",32163,flora_temp
+2026-11-22T17:03:37.265+00:00,tele,False,W,reset bus failed: no devices found,92263,1-wire.device
+2026-11-22T17:03:37.265+00:00,tele,False,E,"flora_temp_init(100): brak DS18B20 na GPIO41 (znaleziono 0 innych urzadzen) - sprawdz rezystor 4,7k do 3,3V, zasilanie i przewod danych",92263,flora_temp
+2026-11-22T17:05:37.261+00:00,tele,False,W,reset bus failed: no devices found,212263,1-wire.device
+2026-11-22T17:05:37.261+00:00,tele,False,E,"flora_temp_init(100): brak DS18B20 na GPIO41 (znaleziono 0 innych urzadzen) - sprawdz rezystor 4,7k do 3,3V, zasilanie i przewod danych",212263,flora_temp
+2026-11-22T17:07:56.368+00:00,head,False,W,"kalibracja poziomu, krok 1: NIE RUSZAJ robota przez 2 s",351298,fusion
+2026-11-22T17:08:09.149+00:00,head,False,W,"kalibracja poziomu, krok 2: NIE RUSZAJ robota przez 2 s",364048,fusion
+2026-11-22T17:09:37.114+00:00,tele,False,W,reset bus failed: no devices found,452263,1-wire.device
+2026-11-22T17:09:37.420+00:00,tele,False,E,"flora_temp_init(100): brak DS18B20 na GPIO41 (znaleziono 0 innych urzadzen) - sprawdz rezystor 4,7k do 3,3V, zasilanie i przewod danych",452273,flora_temp
+2026-11-22T17:12:43.178+00:00,head,False,W,"kalibracja poziomu, krok 1: NIE RUSZAJ robota przez 2 s",638118,fusion
+2026-11-22T17:12:55.405+00:00,head,False,W,"kalibracja poziomu, krok 2: NIE RUSZAJ robota przez 2 s",650518,fusion
+2026-11-22T17:13:00.991+00:00,head,False,W,kalibracja magnetometru: obracaj glowica wokol pionu przez 40 s (2-3 pelne obroty),655928,fusion
+2026-11-22T17:13:00.992+00:00,tele,False,W,"kalibracja magnetometru auto, 40 s - robot obraca sie w miejscu",655943,kal_glowicy
+2026-11-22T17:13:43.384+00:00,head,False,W,kurs przestawiony na magnetometr o -154.7 st (po kalibracji),698478,fusion
+2026-11-22T17:13:43.384+00:00,tele,False,W,"skok kursu glowicy o -154.7 st bez obrotu w zyroskopie - przesuwam odniesienie (b), poza i kat zostaja",698513,nav

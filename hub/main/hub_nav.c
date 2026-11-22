@@ -214,18 +214,32 @@ static int read_tags(uint32_t *seq, flora_navcore_det_t *dets)
         return -1;
     }
     int n = msg.count > FLORA_TAGS_MAX ? FLORA_TAGS_MAX : msg.count;
+    /* Obrot kamery wzgledem przodu robota: kat znacznika wzgledem OSI ROBOTA.
+     * Do nagrania idzie juz poprawiony, zeby odtworzenie na komputerze
+     * dawalo to samo co robot. */
+    hub_params_t p;
+    hub_params_get(&p);
+    const int yaw_cdeg = (int)lroundf(p.cam_yaw_deg * 100.0f);
+    /* Kamera mierzy w linii prostej, EKF liczy na plaszczyznie. */
+    const float dh = p.cam_h_mm - p.tag_h_mm;
     char line[160];
     int len = snprintf(line, sizeof line, FLORA_NAVLOG_FMT_G_HEAD, (unsigned)n);
     for (int i = 0; i < n; i++) {
         const flora_tag_t *t = &msg.tags[i];
+        const int bearing_cdeg = (int)t->bearing_cdeg + yaw_cdeg;
+        float d = t->distance_mm;
+        if (d > 0.0f && fabsf(dh) > 0.0f && d > fabsf(dh)) {
+            d = sqrtf(d * d - dh * dh);
+        }
+        const uint16_t dist_mm = (uint16_t)lroundf(d);
         dets[i] = (flora_navcore_det_t){
             .id          = t->id,
-            .distance_mm = t->distance_mm,
-            .bearing_deg = t->bearing_cdeg / 100.0f,
+            .distance_mm = dist_mm,
+            .bearing_deg = bearing_cdeg / 100.0f,
             .quality     = t->quality,
         };
         len += snprintf(line + len, sizeof line - len, FLORA_NAVLOG_FMT_G_ITEM,
-                        (unsigned)t->id, (unsigned)t->distance_mm, (int)t->bearing_cdeg,
+                        (unsigned)t->id, (unsigned)dist_mm, bearing_cdeg,
                         (unsigned)t->quality);
     }
     hub_rec_printf("%s\n", line);
@@ -394,10 +408,19 @@ static void nav_task(void *arg)
         xSemaphoreTake(s_n.lock, portMAX_DELAY);
         bool stepped = flora_navcore_step(&s_n.core, &in);
         bool still   = s_n.core.still;
+        const uint32_t head_jumps = s_n.core.n_head_jumps;
+        const float    jump_deg   = s_n.core.last_head_jump_deg;
         int  gate    = s_n.core.sun_gate;
         pose_blob_t cur = pose_now();
         xSemaphoreGive(s_n.lock);
         pose_maybe_save(&cur, still, now.timestamp_us);
+
+        static uint32_t s_seen_jumps;
+        if (head_jumps != s_seen_jumps) {
+            s_seen_jumps = head_jumps;
+            ESP_LOGW(TAG, "skok kursu glowicy o %.1f st bez obrotu w zyroskopie - "
+                          "przesuwam odniesienie (b), poza i kat zostaja", jump_deg);
+        }
 
         if (!stepped) {
             ESP_LOGW(TAG, "skok enkoderow (%.0f / %.0f mm) - pomijam krok", in.dl_mm, in.dr_mm);

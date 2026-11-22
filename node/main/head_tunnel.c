@@ -89,9 +89,9 @@ static void tunnel_task(void *arg)
     for (;;) {
         const size_t n = xMessageBufferReceive(s_up, q, sizeof q, pdMS_TO_TICKS(500));
 
-        if (s_seen && !subscribed) {
-            /* Dopiero gdy klient MQTT juz istnieje - inaczej sprobujemy
-             * przy nastepnej wiadomosci. */
+        if (s_seen && !subscribed && flora_mqtt_is_connected()) {
+            /* Dopiero przy dzialajacym kliencie - inaczej subscribe loguje
+             * blad przy kazdej wiadomosci tunelu. */
             if (flora_mqtt_subscribe("cmd/#", 1, on_cmd, NULL) == ESP_OK) {
                 subscribed = true;
                 ESP_LOGW(TAG, "bryla nadaje przez tunel - przekazuje jej cmd/#");

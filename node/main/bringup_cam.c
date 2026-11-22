@@ -120,10 +120,12 @@ static esp_timer_handle_t s_idle_timer;
 
 static cam_mode_t mode_load(void)
 {
-    char v[8] = "jpeg";
+    /* Domyslnie raw: w nim dziala wykrywanie znacznikow (head_tags.c),
+     * a podglad i tak pokazuje obraz przez canvas. */
+    char v[8] = "raw";
     flora_store_t store = NULL;
     if (flora_store_open(FLORA_HEAD_NVS_NS, &store) == ESP_OK) {
-        flora_store_get_str(store, NVS_CAM_MODE, v, sizeof v, "jpeg");
+        flora_store_get_str(store, NVS_CAM_MODE, v, sizeof v, "raw");
         flora_store_close(store);
     }
     return strcmp(v, "raw") == 0 ? MODE_RAW : MODE_JPEG;
@@ -327,7 +329,7 @@ static const char PAGE_JPEG[] =
     "text-align:center}img{max-width:100%;image-rendering:pixelated}"
     "p{margin:8px}a{color:#8cf}</style>"
     "<img src='/stream' alt='strumien z kamery'>"
-    "<p>obiektyw 160&deg;, tryb jpeg &middot; <a href='/jpg'>zapisz klatke</a>"
+    "<p>tryb jpeg (znaczniki nie dzialaja) &middot; <a href='/jpg'>zapisz klatke</a>"
     " &middot; <a href='/focus'>ustaw ostrosc</a>"
     " &middot; <a href='/mode?v=raw'>przelacz na surowy RGB565</a></p>";
 

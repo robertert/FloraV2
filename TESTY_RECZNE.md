@@ -138,6 +138,11 @@ stan i flagi `*_set` na `config_nav`.
 - [ ] **Odleglosc z ukosa** (nowy wzor z pionowych bokow): ten sam
       znacznik obrocony o 45 st wokol pionu, ta sama odleglosc - wynik
       w granicach ~3%. Potem znacznik przy brzegu kadru.
+- [ ] **Obrot kamery** (`cam_yaw_deg`): znacznik na tasmie od srodka przodu
+      robota, kat z logu glowicy (`znaczniki`) ze ZMIENIONYM znakiem do
+      `cmd/config/cam_yaw_deg` (np. -6,0 st w logu -> `6`). Log glowicy
+      i `head/tags` dalej pokazuja kat surowy, poprawiony idzie do EKF
+      i do nagran. 22.11.2026: -6 st po wstepnym ustawieniu glowicy.
 - [ ] **Polozenie kamery** wzgledem srodka osi kol: zmierzyc i ustawic
       `cmd/config/cam_x_mm`, `cmd/config/cam_y_mm` (dzis 295 / 0, tymczasowo).
 - [ ] **Mapa palikow**: rozstawic paliki, zmierzyc polozenia tasma w ukladzie

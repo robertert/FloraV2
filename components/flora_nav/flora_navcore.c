@@ -254,6 +254,40 @@ bool flora_navcore_step(flora_navcore_t *c, const flora_navcore_in_t *in)
         c->gyro_vs_odo_dps += 0.05f * (mis_dps - c->gyro_vs_odo_dps);   /* ~0,4 s */
     }
 
+    /* Ciaglosc kursu glowicy: zmiana kursu miedzy probkami ATTITUDE, ktorej
+     * nie widzi zyroskop glowicy, to przestawienie odniesienia (np. glowica
+     * ustawila kurs wg magnetometru), nie obrot robota. Przesuwamy wtedy b,
+     * zeby kierunek bezwzgledny nie nadpisal wzglednego (theta, pozycja). */
+    if (c->gyro_ok && dt > 0.0f) {
+        c->hj_gyro_deg += c->att.rate_dps * dt;
+    }
+    if (in->att) {
+        if (in->att->heading_valid) {
+            if (c->hj_have && c->tun.head_jump_deg > 0.0f &&
+                in->t_us - c->hj_prev_us < 1000000) {
+                float delta = R2D(flora_ekf_wrap(D2R(in->att->heading_deg - c->hj_prev_deg)));
+                float jump  = R2D(flora_ekf_wrap(D2R(delta - c->hj_gyro_deg)));
+                if (fabsf(jump) > c->tun.head_jump_deg) {
+                    /* psi = b - theta: skok psi przy stalym theta to skok b. */
+                    for (int i = 0; i < FLORA_NAVCORE_VARIANTS; i++) {
+                        flora_ekf_t *e = &c->v[i].ekf;
+                        if (c->v[i].src & HEAD) {
+                            e->x[FLORA_EKF_B] = flora_ekf_wrap(e->x[FLORA_EKF_B] + D2R(jump));
+                        }
+                    }
+                    c->n_head_jumps++;
+                    c->last_head_jump_deg = jump;
+                }
+            }
+            c->hj_have = true;
+            c->hj_prev_deg = in->att->heading_deg;
+            c->hj_prev_us = in->t_us;
+            c->hj_gyro_deg = 0.0f;
+        } else {
+            c->hj_have = false;
+        }
+    }
+
     /* Pomiary raz na takt, wspolne dla wszystkich wariantow. */
     meas_t head = take_heading(c, in->t_us, in->att);
     meas_t sun  = take_sun(c, in->t_us, in->sun, in->unix_s);

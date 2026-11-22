@@ -400,21 +400,67 @@
   <section class="card" data-topic="config" data-kind="state"><h2>Ustawienia bryly (NVS) <span class="age"></span></h2>
     <div class="kv"></div>
     <div class="row">
-      <select id="cfg-key">
-        <option value="mqtt_uri">mqtt_uri</option>
-        <option value="wifi_ssid">wifi_ssid</option>
-        <option value="wifi_pass">wifi_pass</option>
-        <option value="mqtt_user">mqtt_user</option>
-        <option value="mqtt_pass">mqtt_pass</option>
-        <option value="soil_dry">soil_dry</option>
-        <option value="soil_wet">soil_wet</option>
-      </select>
+      <!-- Pole z podpowiedziami zamiast listy: kluczy jest duzo (hub_config.h,
+           hub_params.h, hub_autocfg.h), a lista blokowala wpisanie innego. -->
+      <input id="cfg-key" list="cfg-keys" placeholder="klucz" style="width:120px" autocomplete="off">
+      <datalist id="cfg-keys">
+        <option value="mqtt_uri"></option>
+        <option value="wifi_ssid"></option>
+        <option value="wifi_pass"></option>
+        <option value="mqtt_user"></option>
+        <option value="mqtt_pass"></option>
+        <option value="soil_dry"></option>
+        <option value="soil_wet"></option>
+        <option value="track_mm"></option>
+        <option value="wheel_mm"></option>
+        <option value="wheel_ratio"></option>
+        <option value="cam_x_mm"></option>
+        <option value="cam_y_mm"></option>
+        <option value="cam_yaw_deg"></option>
+        <option value="cam_h_mm"></option>
+        <option value="tag_h_mm"></option>
+        <option value="site_lat"></option>
+        <option value="site_lon"></option>
+        <option value="mag_decl"></option>
+        <option value="guard_en"></option>
+        <option value="pilot_en"></option>
+        <option value="water_en"></option>
+        <option value="mission_en"></option>
+        <option value="sleep_en"></option>
+        <option value="mdd_key_en"></option>
+        <option value="guard_mask"></option>
+      </datalist>
       <input id="cfg-val" type="text" style="width:150px">
       <button id="cfg-save">zapisz</button>
     </div>
     <div class="row">
       <input id="log-val" type="text" placeholder="flora_sonar D" title="tag i poziom: &lt;tag|*&gt; &lt;E|W|I|D|V&gt;" style="width:130px" autocomplete="off">
       <button id="log-set">poziom logow</button>
+    </div>
+    <!-- Dowolna komenda cmd/<nazwa> (lista w hub/main/hub_remote.h) - nie
+         kazda ma wlasna karte. Pusta wartosc wysyla pusty payload. -->
+    <div class="row">
+      <input id="cmd-name" list="cmd-names" placeholder="komenda" style="width:110px" autocomplete="off">
+      <datalist id="cmd-names">
+        <option value="track_cal"></option>
+        <option value="tag"></option>
+        <option value="pose_reset"></option>
+        <option value="mag_cal"></option>
+        <option value="level_cal"></option>
+        <option value="wheel_cal"></option>
+        <option value="head_gyro_cal"></option>
+        <option value="goto"></option>
+        <option value="turn"></option>
+        <option value="area"></option>
+        <option value="mission"></option>
+        <option value="water"></option>
+        <option value="pump"></option>
+        <option value="mast"></option>
+        <option value="sonar"></option>
+        <option value="stall_clear"></option>
+      </datalist>
+      <input id="cmd-arg" type="text" placeholder="wartosc, np. 3" style="width:120px" autocomplete="off">
+      <button id="cmd-send">wyslij</button>
     </div>
     <div class="row"><button id="reboot" class="danger">restart bryly</button></div>
     <p class="note">
@@ -982,6 +1028,11 @@ $("hlog-set").onclick = () => {
   if (/^\S+ [EWIDV]$/.test(v)) { sendHead("log", v); }
   else { badAck("log glowicy: podaj tag i poziom, np. slow D albo * I"); }
 };
+$("cmd-send").onclick = () => {
+  const c = $("cmd-name").value.trim();
+  if (!/^[a-z_\/0-9]+$/.test(c)) { badAck("komenda: podaj nazwe, np. track_cal"); return; }
+  send(c, $("cmd-arg").value.trim());
+};
 $("log-set").onclick = () => {
   const v = $("log-val").value.trim();
   if (/^\S+ [EWIDV]$/.test(v)) { send("log", v); }
@@ -995,7 +1046,8 @@ armed($("hreboot"), "restart glowicy", () => sendHead("reboot", "1"));
 
 $("cfg-save").onclick = () => {
   const v = $("cfg-val").value.trim();
-  if (v) { send("config/" + $("cfg-key").value, v); $("cfg-val").value = ""; }
+  const k = $("cfg-key").value.trim();
+  if (k && v) { send("config/" + k, v); $("cfg-val").value = ""; }
 };
 /* Dwa klikniecia zamiast okna potwierdzenia: pierwsze uzbraja przycisk. */
 let rebootArmed = null;

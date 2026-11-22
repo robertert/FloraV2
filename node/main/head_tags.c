@@ -35,15 +35,25 @@ static const char *TAG = "znaczniki";
 static flora_link_handle_t s_down;
 static uint8_t            *s_gray;       /**< 320x240, PSRAM */
 
-/** RGB565 big-endian (jak dekoduje esp32-camera) -> jasnosc 0..255. */
-static void to_gray(const uint8_t *rgb, uint8_t *gray, size_t n)
+/**
+ * RGB565 big-endian (jak dekoduje esp32-camera) -> jasnosc 0..255.
+ * Przy FLORA_HEAD_TAG_MIRROR wiersze sa odwracane lewo-prawo, bo kamera
+ * glowicy daje obraz lustrzany, a odbitego znacznika nie da sie odczytac.
+ * Srodek i azymut znacznika licza sie wtedy w obrazie prostym.
+ */
+static void to_gray(const uint8_t *rgb, uint8_t *gray, uint16_t w, uint16_t h)
 {
-    for (size_t i = 0; i < n; i++) {
-        const uint8_t hb = rgb[2 * i], lb = rgb[2 * i + 1];
-        const uint32_t r = hb & 0xF8;
-        const uint32_t g = ((hb & 0x07) << 5) | ((lb & 0xE0) >> 3);
-        const uint32_t b = (lb & 0x1F) << 3;
-        gray[i] = (uint8_t)((77 * r + 150 * g + 29 * b) >> 8);
+    for (uint16_t y = 0; y < h; y++) {
+        const uint8_t *src = rgb + (size_t)y * w * 2;
+        uint8_t *dst = gray + (size_t)y * w;
+        for (uint16_t x = 0; x < w; x++) {
+            const uint8_t hb = src[2 * x], lb = src[2 * x + 1];
+            const uint32_t r = hb & 0xF8;
+            const uint32_t g = ((hb & 0x07) << 5) | ((lb & 0xE0) >> 3);
+            const uint32_t b = (lb & 0x1F) << 3;
+            const uint8_t v = (uint8_t)((77 * r + 150 * g + 29 * b) >> 8);
+            dst[FLORA_HEAD_TAG_MIRROR ? (w - 1 - x) : x] = v;
+        }
     }
 }
 
@@ -63,7 +73,7 @@ static void tags_task(void *arg)
         const uint32_t ts_us = (uint32_t)fr.timestamp_us;
         const bool ok = fr.format == FLORA_CAMERA_RGB565 && (size_t)w * h <= 320u * 240u;
         if (ok) {
-            to_gray(fr.data, s_gray, (size_t)w * h);
+            to_gray(fr.data, s_gray, w, h);
         }
         /* Kamere oddajemy PRZED detekcja: ta trwa dlugo, a blokada kamery
          * trzyma serwer podgladu i timer usypiania. */

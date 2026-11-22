@@ -102,7 +102,8 @@
  * nie tryb pracy. Gdyby kiedys mialo byc przelaczane zdalnie, wlasciwym
  * miejscem jest kanal komend z bryly (flora_cmd_code_t i head_cmd.c).
  */
-#define FLORA_HEAD_CAM_NET_DEFAULT 0
+/* TYMCZASOWO 1 (22.11.2026): podglad przy testach znacznikow. Wroc na 0. */
+#define FLORA_HEAD_CAM_NET_DEFAULT 1
 
 /**
  * Wlasne WiFi i MQTT glowicy (head_net.c): logi, info o starcie, komendy
@@ -163,7 +164,8 @@
  *     zasieg = 297 * 300 / 8 = 11,1 m
  * Przy 150 mm byloby to 5,6 m.
  */
-#define FLORA_HEAD_TAG_SIZE_MM   300
+/* TYMCZASOWO 152 (22.11.2026): wydruk testowy A4. Docelowe paliki: 300. */
+#define FLORA_HEAD_TAG_SIZE_MM   152
 /**
  * Zasieg wyliczony z geometrii, do potwierdzenia pomiarem w polu -
  * swiatlo, ostrosc obiektywu i kontrast wydruku moga go skrocic.
@@ -218,6 +220,16 @@
  * wiec jeden pomiar wystarczy.
  */
 #define FLORA_HEAD_TAG_FOCAL_PX      297.0f
+
+/**
+ * Kamera glowicy daje obraz ODBITY LUSTRZANIE (lewo-prawo). Sprawdzone
+ * 22.11.2026 na klatce z /raw: znacznik 36h11 nie dekodowal sie wcale,
+ * a po odbiciu dal id 0 z decision_margin 134. Odbity znacznik to dla
+ * detektora inny wzor, wiec head_tags.c odbija klatke przy zamianie na
+ * szarosc. Tylko dla znacznikow - flora_camera i podglad zostaja bez zmian.
+ * 0 po wymianie modulu kamery na taki, ktory daje obraz prosty.
+ */
+#define FLORA_HEAD_TAG_MIRROR        1
 
 /* ---- Klucze NVS glowicy ----
  * Wlasne, nie z flora_board.h - ten opisuje bryle, a glowica ma osobna

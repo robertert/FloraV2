@@ -1,0 +1,2 @@
+time,source,boots,built,fw,idf,partition,reset,rolled_back
+2026-11-22T17:02:16.396+00:00,head,97,Nov 22 2026 01:12:02,head-v0.3.1-dirty,v6.1,ota_0,power_on,

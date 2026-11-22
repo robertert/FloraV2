@@ -54,6 +54,14 @@ typedef struct {
     float max_step_mm;            /**< wiecej w jednym takcie = skok licznika */
     float static_q_xy;            /**< model bez odometrii [mm^2/s] */
     float static_q_th;            /**< [rad^2/s] */
+    /**
+     * Skok kursu glowicy [st] miedzy kolejnymi ATTITUDE, ktorego nie widac
+     * w zyroskopie glowicy (rate_z), uznajemy za przestawienie ODNIESIENIA
+     * (glowica ustawila kurs wg magnetometru) - przesuwa b we wszystkich
+     * wariantach z kursem glowicy, theta i pozycja zostaja. 0 = wylaczone.
+     * Prawdziwy obrot robota widzi zyroskop, wiec go to nie dotyczy.
+     */
+    float head_jump_deg;
 } flora_navcore_tuning_t;
 
 #define FLORA_NAVCORE_DEFAULT_TUNING()                        \
@@ -70,6 +78,7 @@ typedef struct {
         .max_step_mm          = 100.0f,                       \
         .static_q_xy          = 1.0e4f,                       \
         .static_q_th          = 0.5236f * 0.5236f,            \
+        .head_jump_deg        = 20.0f,                        \
     }
 
 /** ATTITUDE z glowicy, juz rozpakowane. */
@@ -156,6 +165,14 @@ typedef struct {
     float    sun_diff_deg;
     uint32_t n_sun_seen, n_sun_gated;
     uint32_t n_steps, n_jumps;
+
+    /* ciaglosc kursu glowicy (head_jump_deg) */
+    bool     hj_have;
+    float    hj_prev_deg;    /**< kurs z poprzedniego ATTITUDE */
+    int64_t  hj_prev_us;
+    float    hj_gyro_deg;    /**< obrot z zyroskopu od tamtej chwili, CW */
+    uint32_t n_head_jumps;
+    float    last_head_jump_deg;
 } flora_navcore_t;
 
 void flora_navcore_init(flora_navcore_t *c, const flora_navcore_tuning_t *tun,

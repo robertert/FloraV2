@@ -118,6 +118,10 @@ esp_err_t hub_links_start(void)
     cfg.size_of       = flora_msgs_payload_size;
     cfg.ack_type      = FLORA_MSG_ACK;
     cfg.on_state      = on_state;
+    /* TYMCZASOWE (22.11.2026, tunel MQTT przez glowice): 115200 zamiast
+     * 57600, po obu stronach (node/main/head_links.c). Po wymianie ESP bryly
+     * i powrocie do WiFi - z powrotem domyslne 57600 W OBU miejscach. */
+    cfg.baud_rate     = 115200;
 
     esp_err_t ret = flora_link_init(&cfg, &s_link);
     if (ret != ESP_OK) {

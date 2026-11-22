@@ -10,6 +10,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "hub_links.h"
 #include "hub_tunnel.h"
@@ -21,10 +22,15 @@
 
 static const char *TAG = "tunel";
 
-/** Przerwa po kazdym kawalku: ~72 B ramki co 20 ms = ~3,6 kB/s, czyli ok.
- *  60% lacza 57600. Bez tego bufor nadawczy UART-u sie zapycha i blokuje
+/** Przerwa po kazdym kawalku: ~72 B ramki co 10 ms = ~7 kB/s, czyli ok.
+ *  60% lacza 115200 (TYMCZASOWO podniesione dla tunelu, hub_links.c). Bez tego bufor nadawczy UART-u sie zapycha i blokuje
  *  innych nadawcow (TIME_SYNC idzie z timera, wspolnego z petla napedu). */
-#define PACE_MS        20
+#define PACE_MS        10
+/** Zwykla telemetria: kazdy temat najwyzej raz na tyle ms. Bez tego glowica
+ *  nie nadazala wystawiac na brokerze (TLS, zapis stawal na 10 s) i przez
+ *  to spozniala komendy jazdy - naped stawal na dead-manie i ruszal. */
+#define BULK_MIN_MS    1000
+#define LIMIT_SLOTS    64
 #define PRIO_BUF_BYTES 2048
 #define BULK_BUF_BYTES 4096
 #define RX_BUF_BYTES   1024
@@ -35,7 +41,46 @@ static const char *TAG = "tunel";
 static MessageBufferHandle_t s_prio, s_bulk, s_rx;
 static SemaphoreHandle_t     s_wlock;
 static flora_tunnel_rx_t     s_rxasm;      /**< pisze tylko zadanie lacza */
-static volatile uint32_t     s_sent, s_dropped, s_received;
+static volatile uint32_t     s_sent, s_dropped, s_received, s_throttled;
+
+/** Czas ostatniej wysylki tematu (po skrocie nazwy). Pod s_wlock. */
+static struct { uint32_t hash; int64_t t_us; } s_limit[LIMIT_SLOTS];
+
+static uint32_t topic_hash(const char *t)
+{
+    uint32_t h = 5381;
+    while (*t) {
+        h = h * 33u + (uint8_t)*t++;
+    }
+    return h ? h : 1;
+}
+
+/** true, gdy temat byl wyslany za niedawno. Zaklada trzymana blokade. */
+static bool too_soon(const char *subtopic)
+{
+    const uint32_t h = topic_hash(subtopic);
+    const int64_t now = esp_timer_get_time();
+    int free_slot = -1, oldest = 0;
+    for (int i = 0; i < LIMIT_SLOTS; i++) {
+        if (s_limit[i].hash == h) {
+            if (now - s_limit[i].t_us < BULK_MIN_MS * 1000LL) {
+                return true;
+            }
+            s_limit[i].t_us = now;
+            return false;
+        }
+        if (!s_limit[i].hash && free_slot < 0) {
+            free_slot = i;
+        }
+        if (s_limit[i].t_us < s_limit[oldest].t_us) {
+            oldest = i;
+        }
+    }
+    const int i = free_slot >= 0 ? free_slot : oldest;
+    s_limit[i].hash = h;
+    s_limit[i].t_us = now;
+    return false;
+}
 
 /** Pierwsza kolejka dla tego, czego nie wolno zgubic przy natloku telemetrii. */
 static bool is_priority(const char *subtopic, int qos, bool retain)
@@ -58,12 +103,18 @@ static esp_err_t proxy_pub(const char *subtopic, const void *data, size_t len,
         return ESP_ERR_TIMEOUT;
     }
     esp_err_t ret = ESP_OK;
+    const bool prio = is_priority(subtopic, qos, retain);
+    if (!prio && too_soon(subtopic)) {
+        s_throttled++;
+        xSemaphoreGive(s_wlock);
+        return ESP_OK;          /* celowo pominiete, nie blad */
+    }
     const size_t n = flora_tunnel_pack(subtopic, data, len, buf + Q_HDR, sizeof buf - Q_HDR);
     if (!n) {
         ret = ESP_ERR_INVALID_SIZE;
     } else {
         buf[0] = (uint8_t)((qos & 3) | (retain ? 0x80 : 0));
-        MessageBufferHandle_t q = is_priority(subtopic, qos, retain) ? s_prio : s_bulk;
+        MessageBufferHandle_t q = prio ? s_prio : s_bulk;
         if (xMessageBufferSend(q, buf, Q_HDR + n, 0) == 0) {
             ret = ESP_ERR_NO_MEM;
         }
@@ -130,8 +181,9 @@ static void tx_task(void *arg)
             last_stats = now;
             flora_mqtt_publish_fmt("tele/tunnel", 0, false,
                                    "{\"sent\":%" PRIu32 ",\"dropped\":%" PRIu32
-                                   ",\"rx\":%" PRIu32 ",\"rx_lost\":%" PRIu32 "}",
-                                   s_sent, s_dropped, s_received, s_rxasm.dropped);
+                                   ",\"throttled\":%" PRIu32 ",\"rx\":%" PRIu32
+                                   ",\"rx_lost\":%" PRIu32 "}",
+                                   s_sent, s_dropped, s_throttled, s_received, s_rxasm.dropped);
         }
     }
 }

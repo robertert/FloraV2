@@ -108,6 +108,15 @@ static struct {
     float     mag_h, mag_dip, mag_total;
     bool      collecting;
     bool      resync_pending;   /**< po kalibracji: nastepny dobry pomiar ustawia kurs */
+    /**
+     * Kurs zakotwiczony w magnetometrze: ustawiony z niego przy starcie
+     * (ALIGN) albo po kalibracji. Glowica, ktora wystartowala BEZ
+     * magnetometru, ma kurs wzgledny i magnetometr go nie poprawia ani nie
+     * przestawia do konca sesji - inaczej pierwszy odczyt, ktory przypadkiem
+     * przejdzie sprawdzenie pola, przestawia kurs o dowolny kat (22.11.2026:
+     * 154 st w pomieszczeniu). Zakotwiczenie daje dopiero mag_cal.
+     */
+    bool      mag_anchored;
     int64_t   collect_end_us;
 
     /* poziom akcelerometru: przekrzywienie plytki na maszcie */
@@ -525,19 +534,26 @@ static void mag_step(void)
                     s_f.dist.cause == FLORA_MAGDIST_CAUSE_GYRO;
     bool stuck = s_f.dist.cause == FLORA_MAGDIST_CAUSE_GYRO &&
                  s_f.dist.reject_ms_run >= MAG_RESYNC_MS;
-    if (s_f.state == HEAD_FUSION_RUN && field_ok && (s_f.resync_pending || stuck)) {
+    /* Przestawienie po dlugiej niezgodnosci tylko dla kursu juz opartego na
+     * magnetometrze. Kurs wzgledny przestawia wylacznie kalibracja. */
+    if (s_f.state == HEAD_FUSION_RUN && field_ok &&
+        (s_f.resync_pending || (stuck && s_f.mag_anchored))) {
         float jump = head_angle_diff(s_f.mag_heading, s_f.kf.psi);
         ESP_LOGW(TAG, "kurs przestawiony na magnetometr o %.1f st (%s)", jump,
                  s_f.resync_pending ? "po kalibracji" : "30 s niezgodnosci z filtrem");
         flora_hkf_reset_heading(&s_f.kf, s_f.mag_heading, sigma);
         flora_magdist_clear(&s_f.dist);
         s_f.resync_pending = false;
+        s_f.mag_anchored = true;
         s_f.mag_valid = true;
         return;
     }
-    s_f.mag_valid = !disturbed;
+    /* W ALIGN mag_valid decyduje o zakotwiczeniu; w RUN magnetometr liczy
+     * sie tylko dla kursu zakotwiczonego - przy wzglednym jest tylko
+     * mierzony (telemetria), nie trafia do filtra. */
+    s_f.mag_valid = !disturbed && (s_f.state != HEAD_FUSION_RUN || s_f.mag_anchored);
 
-    if (s_f.state == HEAD_FUSION_RUN && !disturbed) {
+    if (s_f.state == HEAD_FUSION_RUN && s_f.mag_valid) {
         flora_hkf_update(&s_f.kf, s_f.mag_heading, sigma);
     }
 }
@@ -774,12 +790,15 @@ static void fusion_task(void *arg)
             if (s_f.mag_valid) {
                 flora_hkf_init(&s_f.kf, &kcfg, s_f.mag_heading, MAG_SIGMA_DEG);
                 s_f.heading_valid = true;
+                s_f.mag_anchored = true;
                 ESP_LOGI(TAG, "kurs ustawiony na %.1f st z magnetometru", s_f.mag_heading);
                 go(HEAD_FUSION_RUN);
             } else if (in_state_ms() > 2000) {
                 /* Bez magnetometru kurs jest tylko wzgledny wobec startu.
                  * Bryla rozpozna to po MAG_VALID = 0 i po ogromnej sigma. */
-                ESP_LOGW(TAG, "brak magnetometru - kurs bedzie wzgledny");
+                ESP_LOGW(TAG, "brak magnetometru - kurs bedzie wzgledny do konca sesji "
+                              "(magnetometr go nie przestawi; zakotwiczy dopiero mag_cal)");
+                s_f.mag_anchored = false;
                 flora_hkf_init(&s_f.kf, &kcfg, 0.0f, NOMAG_SIGMA0_DEG);
                 s_f.heading_valid = true;
                 go(HEAD_FUSION_RUN);

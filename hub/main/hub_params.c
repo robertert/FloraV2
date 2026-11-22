@@ -22,7 +22,7 @@ static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static hub_params_t s_p;
 
 /** Klucz MQTT = klucz NVS, zakres, gdzie w strukturze i ktora flaga "_set". */
-typedef enum { F_TRACK, F_WHEEL, F_RATIO, F_CAM_X, F_CAM_Y, F_LAT, F_LON, F_DECL } field_t;
+typedef enum { F_TRACK, F_WHEEL, F_RATIO, F_CAM_X, F_CAM_Y, F_LAT, F_LON, F_DECL, F_CAM_YAW, F_CAM_H, F_TAG_H } field_t;
 
 static const struct {
     const char *key;
@@ -37,6 +37,10 @@ static const struct {
     { FLORA_NVS_SITE_LAT,    -90.0f,   90.0f, F_LAT },
     { FLORA_NVS_SITE_LON,   -180.0f,  180.0f, F_LON },
     { FLORA_NVS_MAG_DECL,    -30.0f,   30.0f, F_DECL },
+    /* Na koncu: KEYS[] indeksowane jest kolejnoscia field_t. */
+    { FLORA_NVS_CAM_YAW,     -45.0f,   45.0f, F_CAM_YAW },
+    { FLORA_NVS_CAM_H,         0.0f, 2000.0f, F_CAM_H },
+    { FLORA_NVS_TAG_H,         0.0f, 2000.0f, F_TAG_H },
 };
 #define KEY_COUNT (sizeof KEYS / sizeof KEYS[0])
 
@@ -51,6 +55,9 @@ static float default_of(field_t f)
         case F_LAT:   return (float)FLORA_SITE_LAT_DEG;
         case F_LON:   return (float)FLORA_SITE_LON_DEG;
         case F_DECL:  return FLORA_MAG_DECLINATION_DEG;
+        case F_CAM_YAW: return FLORA_NAV_CAM_YAW_DEG;
+        case F_CAM_H:   return FLORA_NAV_CAM_H_MM;
+        case F_TAG_H:   return FLORA_NAV_TAG_H_MM;
     }
     return 0.0f;
 }
@@ -66,6 +73,9 @@ static void put(hub_params_t *p, field_t f, float v)
         case F_LAT:   p->lat_deg     = v; break;
         case F_LON:   p->lon_deg     = v; break;
         case F_DECL:  p->decl_deg    = v; break;
+        case F_CAM_YAW: p->cam_yaw_deg = v; break;
+        case F_CAM_H:   p->cam_h_mm    = v; break;
+        case F_TAG_H:   p->tag_h_mm    = v; break;
     }
 }
 
@@ -85,7 +95,8 @@ static hub_params_t read_all(void)
         switch (KEYS[i].f) {
             case F_TRACK:                  p.track_set |= has; break;
             case F_WHEEL: case F_RATIO:    p.wheel_set |= has; break;
-            case F_CAM_X: case F_CAM_Y:    p.cam_set   |= has; break;
+            case F_CAM_X: case F_CAM_Y: case F_CAM_YAW:
+            case F_CAM_H: case F_TAG_H:    p.cam_set |= has; break;
             case F_LAT: case F_LON:        p.site_set  |= has; break;
             case F_DECL:                   break;
         }
@@ -127,10 +138,11 @@ void hub_params_load(void)
     portENTER_CRITICAL(&s_lock);
     s_p = p;
     portEXIT_CRITICAL(&s_lock);
-    ESP_LOGI(TAG, "rozstaw %.1f mm%s, kolo %.2f mm (P/L %.4f)%s, kamera (%.0f, %.0f) mm%s",
+    ESP_LOGI(TAG, "rozstaw %.1f mm%s, kolo %.2f mm (P/L %.4f)%s, kamera (%.0f, %.0f) mm, "
+                  "obrot %.1f st%s",
              p.track_mm, p.track_set ? "" : " [domyslny]",
              p.wheel_mm, p.wheel_ratio, p.wheel_set ? "" : " [domyslne]",
-             p.cam_x_mm, p.cam_y_mm, p.cam_set ? "" : " [domyslna]");
+             p.cam_x_mm, p.cam_y_mm, p.cam_yaw_deg, p.cam_set ? "" : " [domyslna]");
 }
 
 void hub_params_get(hub_params_t *out)
@@ -213,14 +225,19 @@ void hub_params_publish(void)
 {
     hub_params_t p;
     hub_params_get(&p);
-    flora_mqtt_publish_fmt("config_nav", 1, true,
-                           "{\"track_mm\":%.1f,\"track_set\":%s,\"wheel_mm\":%.2f,"
-                           "\"wheel_ratio\":%.4f,\"wheel_set\":%s,\"cam_x_mm\":%.0f,"
-                           "\"cam_y_mm\":%.0f,\"cam_set\":%s,\"site_lat\":%.5f,"
-                           "\"site_lon\":%.5f,\"site_set\":%s,\"mag_decl\":%.1f,\"tags\":%d}",
-                           p.track_mm, p.track_set ? "true" : "false",
-                           p.wheel_mm, p.wheel_ratio, p.wheel_set ? "true" : "false",
-                           p.cam_x_mm, p.cam_y_mm, p.cam_set ? "true" : "false",
-                           p.lat_deg, p.lon_deg, p.site_set ? "true" : "false",
-                           p.decl_deg, hub_nav_tag_count());
+    /* Wlasny bufor: tresc nie miesci sie w 256 B publish_fmt. */
+    char buf[400];
+    snprintf(buf, sizeof buf,
+             "{\"track_mm\":%.1f,\"track_set\":%s,\"wheel_mm\":%.2f,"
+             "\"wheel_ratio\":%.4f,\"wheel_set\":%s,\"cam_x_mm\":%.0f,"
+             "\"cam_y_mm\":%.0f,\"cam_yaw_deg\":%.1f,\"cam_h_mm\":%.0f,\"tag_h_mm\":%.0f,"
+             "\"cam_set\":%s,\"site_lat\":%.5f,"
+             "\"site_lon\":%.5f,\"site_set\":%s,\"mag_decl\":%.1f,\"tags\":%d}",
+             p.track_mm, p.track_set ? "true" : "false",
+             p.wheel_mm, p.wheel_ratio, p.wheel_set ? "true" : "false",
+             p.cam_x_mm, p.cam_y_mm, p.cam_yaw_deg, p.cam_h_mm, p.tag_h_mm,
+             p.cam_set ? "true" : "false",
+             p.lat_deg, p.lon_deg, p.site_set ? "true" : "false",
+             p.decl_deg, hub_nav_tag_count());
+    flora_mqtt_publish_str("config_nav", buf, 1, true);
 }

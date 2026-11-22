@@ -57,9 +57,16 @@ typedef struct {
     float gate_2d;    /**< prog chi^2 dla pomiaru 2D (9.21 = 99%) */
     /**
      * Wyjscie z blokady bramki kursu: po tylu odrzuceniach kursu Z RZEDU
-     * niepewnosc theta rosnie o kwadrat innowacji i pomiar jest przyjmowany.
-     * Poslizg kola to blad systematyczny - P theta rosnie wtedy wolniej niz
-     * prawdziwy blad i bez tego kompas bylby odrzucany na zawsze. 0 = wylaczone.
+     * pomiar jest przyjmowany po powiekszeniu niepewnosci o kwadrat innowacji.
+     * KTOREJ niepewnosci - rozstrzyga zyroskop (22.11.2026):
+     *  - zyroskop dziala (flora_ekf_observe_gyro w ostatnich ~2 s): obrot
+     *    robota jest potwierdzony przez kola i zyro, wiec uparcie inny kurs
+     *    bezwzgledny znaczy, ze przesunelo sie ODNIESIENIE (magnetometr
+     *    przestawil kurs glowicy, zaklocenie) - rosnie niepewnosc b, theta
+     *    i pozycja zostaja. Kierunek bezwzgledny nie nadpisuje wzglednego.
+     *  - bez zyroskopu: jak dawniej rosnie theta - kola mogly sie slizgac
+     *    i nic innego tego nie zobaczy.
+     * 0 = wylaczone.
      */
     uint16_t heading_recover_n;
     /**
@@ -91,6 +98,8 @@ typedef struct {
     uint32_t n_tag;       /**< przyjete pomiary znacznikow */
     uint32_t n_rejected;  /**< odrzucone przez bramke */
     uint32_t n_recovered; /**< wyjscia z blokady kursu (heading_recover_n) */
+    uint32_t n_recovered_b; /**< z tego przez przesuniecie b (zyroskop dzialal) */
+    uint16_t gyro_ticks;  /**< ile krokow predykcji temu byl zyroskop; 0 = brak */
     uint16_t heading_reject_run;  /**< odrzucenia kursu z rzedu */
 
     /* niezgodnosc kola vs zyroskop od ostatniego przyjetego kursu */

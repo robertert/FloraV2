@@ -99,6 +99,12 @@ esp_err_t head_links_init(void)
      * Przy domyslnej 1 s ciszy kazde male opoznienie dawalo "rozlaczona",
      * a po nim nowe HELLO co 20-40 s. */
     down.peer_timeout_ms = 3000;
+    /* Tunel MQTT bryly (head_tunnel.c) nadaje ~3,5 kB/s - przy 1 kB bufora
+     * kazde zajecie procesora (zapis flash przy OTA, TLS) gubilo ramki. */
+    down.rx_ring_bytes = 4096;
+    /* TYMCZASOWE (22.11.2026, tunel): 115200 jak w hub/main/hub_links.c.
+     * Po powrocie bryly do WiFi - z powrotem 57600 w obu miejscach. */
+    down.baud_rate = 115200;
 
     esp_err_t ret = flora_link_init(&down, &s_down);
     if (ret != ESP_OK) {
